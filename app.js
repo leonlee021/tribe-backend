@@ -30,4 +30,14 @@ app.get('/', (req, res) => {
     res.send('Welcome to the Tribe API');
 });
 
+app.get('/test-db', async (req, res) => {
+    try {
+      await db.sequelize.authenticate();
+      res.status(200).send('Database connection successful.');
+    } catch (error) {
+      console.error('Database connection failed:', error);
+      res.status(500).send('Database connection failed.');
+    }
+  });
+
 module.exports = app;
