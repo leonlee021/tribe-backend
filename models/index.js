@@ -11,25 +11,35 @@ try {
   const env = process.env.NODE_ENV || 'development';
   const db = {};
 
-  const dbConfig = {
-    username: process.env.DB_USERNAME,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    host: process.env.DB_HOST,
-    dialect: 'postgres', // or your preferred dialect
-    dialectOptions: {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false, // For Heroku Postgres
-      },
-    },
-  };
+  let sequelize;
   
-  const sequelize = new Sequelize(dbConfig.database, dbConfig.username, dbConfig.password, {
-    host: dbConfig.host,
-    dialect: dbConfig.dialect,
-    dialectOptions: dbConfig.dialectOptions,
-  });
+  // Check for DATABASE_URL to configure Heroku Postgres in production
+  if (env === 'production' && process.env.DATABASE_URL) {
+    sequelize = new Sequelize(process.env.DATABASE_URL, {
+      dialect: 'postgres',
+      protocol: 'postgres',
+      dialectOptions: {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false, // For Heroku Postgres
+        },
+      },
+    });
+  } else {
+    // Local development config
+    const dbConfig = {
+      username: process.env.DB_USERNAME,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      host: process.env.DB_HOST,
+      dialect: 'postgres',
+    };
+    sequelize = new Sequelize(dbConfig.database, dbConfig.username, dbConfig.password, {
+      host: dbConfig.host,
+      dialect: dbConfig.dialect,
+    });
+  }
+
 
   fs
   .readdirSync(__dirname)
