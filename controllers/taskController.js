@@ -56,14 +56,18 @@ exports.createTask = async (req, res) => {
                     Key: fileName,
                     Body: file.buffer,
                     ContentType: file.mimetype,
-                    ACL: 'public-read', // Allows public read access to the uploaded file
                 };
 
                 // Upload to S3
                 const data = await s3.upload(params).promise();
 
-                // Push the S3 URL to photoUrls array
-                photoUrls.push(data.Location);
+                const photoUrl = s3.getSignedUrl('getObject', {
+                    Bucket: process.env.S3_BUCKET_NAME,
+                    Key: fileName,
+                    Expires: 60 * 60, // URL valid for 1 hour
+                });
+
+                photoUrls.push(photoUrl);
             }
         }
 

@@ -246,7 +246,6 @@ exports.uploadProfilePhoto = async (req, res) => {
             Key: fileName,
             Body: req.file.buffer,
             ContentType: req.file.mimetype,
-            ACL: 'public-read', // Allows public read access to the uploaded file
         };
 
         // Uploading files to the bucket
@@ -256,9 +255,13 @@ exports.uploadProfilePhoto = async (req, res) => {
                 return res.status(500).json({ error: 'Error uploading file' });
             }
 
-            // Construct the URL to access the uploaded image
-            const profilePhotoUrl = data.Location; // S3 returns the URL in the Location property
-
+            // Construct the URL to access the uploaded image using a pre-signed URL
+            const profilePhotoUrl = s3.getSignedUrl('getObject', {
+                Bucket: process.env.S3_BUCKET_NAME,
+                Key: fileName,
+                Expires: 60 * 60, // URL valid for 1 hour
+            });
+            
             // Update the user's profilePhotoUrl
             const user = await User.findByPk(userId);
             if (!user) {
