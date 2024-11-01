@@ -11,12 +11,12 @@ const uploadTaskPhotos = taskController.uploadTaskPhotos; // If exported from ta
 
 // Routes for task operations
 //router.post('/', authenticateToken, taskController.createTask);
-router.post('/',
-    authenticateToken, // Authentication middleware
-    uploadTaskPhotos.array('photos', 5), // Multer middleware
-    taskController.createTask // Controller
-  );
-  router.post('/', authenticateToken, uploadTaskPhotos.array('taskPhotos', 5), taskController.createTask);
+// router.post('/',
+//     authenticateToken, // Authentication middleware
+//     uploadTaskPhotos.array('photos', 5), // Multer middleware
+//     taskController.createTask // Controller
+//   );
+router.post('/', authenticateToken, uploadTaskPhotos.array('taskPhotos', 5), taskController.createTask);
 router.get('/', optionalAuthenticateToken, taskController.getAllTasks);
 router.get('/hidden', authenticateToken, taskController.getHiddenTasks);
 router.get('/:id', taskController.getTaskById);
