@@ -63,15 +63,6 @@ module.exports = {
         type: Sequelize.BOOLEAN,
         defaultValue: false,
       },
-      chatId: {
-        type: Sequelize.INTEGER,
-        allowNull: true,
-        references: {
-          model: 'Chats',
-          key: 'id',
-        },
-        onDelete: 'SET NULL',
-      },
       photos: {
         type: Sequelize.JSON,
         allowNull: true,
