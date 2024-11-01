@@ -99,8 +99,8 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
     },
     profilePhotoUrl: {
-      type: DataTypes.STRING,
-      allowNull: true,
+      type: DataTypes.TEXT, // Updated from STRING(255) to TEXT
+      allowNull: true,      // Adjust based on your requirements
     },
     stripeCustomerId: DataTypes.STRING, 
     averageRating: {
