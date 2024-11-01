@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const userRoutes = require('./routes/userRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const chatRoutes = require('./routes/chatRoutes');
@@ -11,6 +12,15 @@ const cancellationRoutes = require('./routes/cancellationRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 
 const app = express();
+
+const allowedOrigins = ['exp://localhost:19000', 'your-production-app-url']; // Add your Expo app URL
+
+app.use(cors({
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true,
+}));
+
 
 app.use(express.json());
 

@@ -24,6 +24,7 @@ try {
           rejectUnauthorized: false, // For Heroku Postgres
         },
       },
+      logging: false,
     });
   } else {
     // Local development config
