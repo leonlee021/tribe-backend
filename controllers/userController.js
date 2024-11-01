@@ -274,7 +274,7 @@ exports.uploadProfilePhoto = async (req, res) => {
         console.error('Error uploading profile photo:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
-};t
+};
 
 // Delete Authenticated User Account
 exports.deleteUserAccount = async (req, res) => {
