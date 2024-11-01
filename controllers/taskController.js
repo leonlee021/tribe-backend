@@ -3,31 +3,34 @@
 const { Task, Chat, User, sequelize, Review, Cancellation, TaskHide, Offer, Notification } = require('../models');
 const { Op } = require('sequelize');
 const getAuthenticatedUserId = require('../utils/getAuthenticatedUserId'); 
+const s3 = require('../awsConfig'); // AWS S3 instance
+const { v4: uuidv4 } = require('uuid'); // For unique filenames
+
 
 // Create a new task
 // Create a new task
 
-const multer = require('multer');
-const path = require('path');
+// const multer = require('multer');
+// const path = require('path');
 
-// Set up storage for task photos
-const taskPhotoStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/task_photos/'); // Ensure this directory exists
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
-  },
-});
+// // Set up storage for task photos
+// const taskPhotoStorage = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null, 'uploads/task_photos/'); // Ensure this directory exists
+//   },
+//   filename: function (req, file, cb) {
+//     cb(null, Date.now() + '-' + file.originalname);
+//   },
+// });
 
-// Create the multer instance for task photos
-const uploadTaskPhotos = multer({ storage: taskPhotoStorage });
-exports.uploadTaskPhotos = uploadTaskPhotos;
+// // Create the multer instance for task photos
+// const uploadTaskPhotos = multer({ storage: taskPhotoStorage });
+// exports.uploadTaskPhotos = uploadTaskPhotos;
 
 exports.createTask = async (req, res) => {
     try {
         const { taskName, postContent, locationDependent, location, price, taskerUsername } = req.body;
-        
+
         // Validate taskName
         if (!taskName || taskName.trim().split(' ').length > 5) {
             return res.status(400).json({ error: 'Task name is required and must be no longer than 5 words.' });
@@ -43,13 +46,25 @@ exports.createTask = async (req, res) => {
         // Handle uploaded images
         let photoUrls = [];
         if (req.files && req.files.length > 0) {
-            const protocol = req.protocol;
-            const host = req.get('host');
+            // Loop through each file and upload to S3
+            for (const file of req.files) {
+                const fileExtension = file.originalname.split('.').pop();
+                const fileName = `task_photos/${userId}/${uuidv4()}.${fileExtension}`;
 
-            photoUrls = req.files.map(file => {
-                // Construct the URL to access the uploaded image
-                return `${protocol}://${host}/uploads/task_photos/${file.filename}`;
-            });
+                const params = {
+                    Bucket: process.env.S3_BUCKET_NAME,
+                    Key: fileName,
+                    Body: file.buffer,
+                    ContentType: file.mimetype,
+                    ACL: 'public-read', // Allows public read access to the uploaded file
+                };
+
+                // Upload to S3
+                const data = await s3.upload(params).promise();
+
+                // Push the S3 URL to photoUrls array
+                photoUrls.push(data.Location);
+            }
         }
 
         // Create the task

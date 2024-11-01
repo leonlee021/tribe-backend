@@ -5,6 +5,8 @@ const bcrypt = require('bcrypt');
 const path = require('path');
 const admin = require('../firebaseAdmin');
 const getAuthenticatedUserId = require('../utils/getAuthenticatedUserId'); // Import the utility function
+const s3 = require('../awsConfig'); // AWS S3 instance
+const { v4: uuidv4 } = require('uuid'); // For unique filenames
 
 // Create or Update User Profile
 exports.createOrUpdateUser = async (req, res) => {
@@ -234,27 +236,45 @@ exports.uploadProfilePhoto = async (req, res) => {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        // Construct the URL to access the uploaded image
-        // Assuming your server serves static files from the 'uploads' directory with a base URL
-        const protocol = req.protocol;
-        const host = req.get('host');
-        const profilePhotoUrl = `${protocol}://${host}/uploads/profile_photos/${req.file.filename}`;
+        // Generate a unique file name
+        const fileExtension = req.file.originalname.split('.').pop();
+        const fileName = `profile_photos/${userId}/${uuidv4()}.${fileExtension}`;
 
-        // Update the user's profilePhotoUrl
-        const user = await User.findByPk(userId);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
+        // Set up S3 upload parameters
+        const params = {
+            Bucket: process.env.S3_BUCKET_NAME, // Ensure this is set in your environment variables
+            Key: fileName,
+            Body: req.file.buffer,
+            ContentType: req.file.mimetype,
+            ACL: 'public-read', // Allows public read access to the uploaded file
+        };
 
-        user.profilePhotoUrl = profilePhotoUrl;
-        await user.save();
+        // Uploading files to the bucket
+        s3.upload(params, async (err, data) => {
+            if (err) {
+                console.error('Error uploading to S3:', err);
+                return res.status(500).json({ error: 'Error uploading file' });
+            }
 
-        res.status(200).json({ profilePhotoUrl });
+            // Construct the URL to access the uploaded image
+            const profilePhotoUrl = data.Location; // S3 returns the URL in the Location property
+
+            // Update the user's profilePhotoUrl
+            const user = await User.findByPk(userId);
+            if (!user) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+
+            user.profilePhotoUrl = profilePhotoUrl;
+            await user.save();
+
+            res.status(200).json({ profilePhotoUrl });
+        });
     } catch (error) {
         console.error('Error uploading profile photo:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
-};
+};t
 
 // Delete Authenticated User Account
 exports.deleteUserAccount = async (req, res) => {
