@@ -8,7 +8,7 @@ module.exports = {
     if (!tableInfo.photos_temp) {
       // Step 1: Add a new temporary column for photos with ARRAY(TEXT) type
       await queryInterface.addColumn('Tasks', 'photos_temp', {
-        type: Sequelize.ARRAY(Sequelize.STRING),
+        type: Sequelize.ARRAY(Sequelize.TEXT), // Use TEXT instead of STRING
         allowNull: true,
       });
     }
