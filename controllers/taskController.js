@@ -44,9 +44,8 @@ exports.createTask = async (req, res) => {
         }
 
         // Handle uploaded images
-        let photoUrls = [];
+        let photoKeys = [];
         if (req.files && req.files.length > 0) {
-            // Loop through each file and upload to S3
             for (const file of req.files) {
                 const fileExtension = file.originalname.split('.').pop();
                 const fileName = `task_photos/${userId}/${uuidv4()}.${fileExtension}`;
@@ -56,18 +55,14 @@ exports.createTask = async (req, res) => {
                     Key: fileName,
                     Body: file.buffer,
                     ContentType: file.mimetype,
+                    ACL: 'private', // Ensure objects are private
                 };
 
                 // Upload to S3
-                const data = await s3.upload(params).promise();
+                await s3.upload(params).promise();
 
-                const photoUrl = s3.getSignedUrl('getObject', {
-                    Bucket: process.env.S3_BUCKET_NAME,
-                    Key: fileName,
-                    Expires: 60 * 60, // URL valid for 1 hour
-                });
-
-                photoUrls.push(photoUrl);
+                // Store the S3 object key, not the URL
+                photoKeys.push(fileName);
             }
         }
 
@@ -79,7 +74,7 @@ exports.createTask = async (req, res) => {
             location,
             price,
             taskerUsername,
-            photos: photoUrls, // Store the array of photo URLs
+            photos: photoKeys, // Store the array of photo URLs
             userId,
         });
 
@@ -145,6 +140,24 @@ exports.getTasksByUser = async (req, res) => {
         // Filter out hidden tasks for displaying
         const visibleTasks = allTasks.filter(task => !hiddenTaskIds.includes(task.id));
 
+        // Generate pre-signed URLs for each visible task's photos
+        const visibleTasksWithSignedUrls = await Promise.all(visibleTasks.map(async (task) => {
+            const signedPhotoUrls = await Promise.all(task.photos.map(async (photoKey) => {
+                const params = {
+                    Bucket: process.env.S3_BUCKET_NAME,
+                    Key: photoKey,
+                    Expires: 60 * 60, // 1 hour
+                };
+                const url = s3.getSignedUrl('getObject', params);
+                return url;
+            }));
+
+            return {
+                ...task.toJSON(),
+                photos: signedPhotoUrls,
+            };
+        }));
+
         // Calculate total reviews and average rating including hidden tasks
         let totalReviews = 0;
         let totalRating = 0;
@@ -164,7 +177,7 @@ exports.getTasksByUser = async (req, res) => {
         const averageRating = totalReviews > 0 ? (totalRating / totalReviews).toFixed(1) : null;
 
         res.status(200).json({
-            tasks: visibleTasks, // Return only visible tasks
+            tasks: visibleTasksWithSignedUrls, // Return only visible tasks
             averageRating,
             reviewCount: totalReviews,
         });
@@ -174,17 +187,114 @@ exports.getTasksByUser = async (req, res) => {
     }
 };
 
+// Get tasks accepted by a specific helper (tasker)
+exports.getTasksByHelper = async (req, res) => {
+    const taskerId = req.params.taskerId;
+
+    try {
+        // Validate taskerId
+        if (!taskerId) {
+            return res.status(400).json({ error: 'Tasker ID is required.' });
+        }
+
+        // Fetch hidden task IDs for the helper
+        const hiddenTaskIds = await TaskHide.findAll({
+            where: { userId: taskerId },
+            attributes: ['taskId'],
+        }).then(hides => hides.map(hide => hide.taskId));
+
+        // Fetch all tasks accepted by the helper
+        const allTasks = await Task.findAll({
+            where: {
+                taskerAcceptedId: taskerId,
+            },
+            include: [
+                {
+                    model: User,
+                    as: 'user',
+                    attributes: ['id', 'firstName', 'lastName', 'profilePhotoUrl'],
+                },
+                {
+                    model: Offer,
+                    as: 'offers',
+                    include: [
+                        {
+                            model: User,
+                            as: 'tasker',
+                            attributes: ['id', 'firstName', 'lastName', 'profilePhotoUrl'],
+                        },
+                    ],
+                },
+                {
+                    model: Chat,
+                    as: 'activeChat',
+                    include: [
+                        {
+                            model: Review,
+                            as: 'reviews',
+                            required: false,
+                            attributes: ['id', 'rating', 'review', 'reviewedUserId'],
+                        },
+                    ],
+                },
+            ],
+        });
+
+        // Filter out hidden tasks for displaying
+        const visibleTasks = allTasks.filter(task => !hiddenTaskIds.includes(task.id));
+
+        // Generate pre-signed URLs for each visible task's photos
+        const visibleTasksWithSignedUrls = await Promise.all(visibleTasks.map(async (task) => {
+            const signedPhotoUrls = await Promise.all(task.photos.map(async (photoKey) => {
+                const params = {
+                    Bucket: process.env.S3_BUCKET_NAME,
+                    Key: photoKey,
+                    Expires: 60 * 60, // 1 hour
+                };
+                const url = s3.getSignedUrl('getObject', params);
+                return url;
+            }));
+
+            return {
+                ...task.toJSON(),
+                photos: signedPhotoUrls,
+            };
+        }));
+
+        // Calculate total reviews and average rating including hidden tasks
+        let totalReviews = 0;
+        let totalRating = 0;
+
+        allTasks.forEach(task => {
+            if (task.activeChat && task.activeChat.reviews) {
+                task.activeChat.reviews.forEach(review => {
+                    if (parseInt(review.reviewedUserId) === parseInt(taskerId)) {
+                        totalReviews += 1;
+                        totalRating += review.rating;
+                    }
+                });
+            }
+        });
+
+        // Calculate the average rating
+        const averageRating = totalReviews > 0 ? (totalRating / totalReviews).toFixed(1) : null;
+
+        res.status(200).json({
+            tasks: visibleTasksWithSignedUrls, // Return only visible tasks
+            averageRating,
+            reviewCount: totalReviews,
+        });
+    } catch (error) {
+        console.error('Error fetching tasks by helper:', error);
+        res.status(500).json({ error: 'Failed to fetch tasks for helper.' });
+    }
+};
+
 // Get all tasks with additional user context
 exports.getAllTasks = async (req, res) => {
     try {
         // Fetch the authenticated user ID
         const userId = await getAuthenticatedUserId(req);
-
-        if (userId) {
-            //console.log('Fetching tasks for authenticated user ID:', userId);
-        } else {
-            //console.log('Fetching tasks for guest user');
-        }
 
         // Fetch all tasks with related data
         const tasks = await Task.findAll({
@@ -227,8 +337,6 @@ exports.getAllTasks = async (req, res) => {
             order: [['createdAt', 'DESC']],
         });
 
-        //console.log('Number of tasks fetched:', tasks.length);
-
         // Map through tasks to add additional context
         const tasksWithCounts = tasks.map(task => {
             const appliedByCount = task.offers.length;
@@ -243,7 +351,27 @@ exports.getAllTasks = async (req, res) => {
             };
         });
 
+        // Generate pre-signed URLs for each task's photos
+        const tasksWithSignedUrls = await Promise.all(tasks.map(async (task) => {
+            const signedPhotoUrls = await Promise.all(task.photos.map(async (photoKey) => {
+                const params = {
+                    Bucket: process.env.S3_BUCKET_NAME,
+                    Key: photoKey,
+                    Expires: 60 * 60, // 1 hour
+                };
+                const url = s3.getSignedUrl('getObject', params);
+                return url;
+            }));
+
+            return {
+                ...task.toJSON(),
+                photos: signedPhotoUrls, // Replace object keys with pre-signed URLs
+            };
+        }));
+
+    
         res.json(tasksWithCounts);
+        res.json(tasksWithSignedUrls);
     } catch (err) {
         console.error('Error fetching all tasks:', err);
         res.status(500).json({ error: 'Failed to fetch all tasks.' });
@@ -286,6 +414,24 @@ exports.getTaskById = async (req, res) => {
         if (!task) {
             return res.status(404).json({ error: 'Task not found.' });
         }
+
+        // Generate pre-signed URLs for task photos
+        const signedPhotoUrls = await Promise.all(task.photos.map(async (photoKey) => {
+            const params = {
+                Bucket: process.env.S3_BUCKET_NAME,
+                Key: photoKey,
+                Expires: 60 * 60, // 1 hour
+            };
+            const url = s3.getSignedUrl('getObject', params);
+            return url;
+        }));
+
+        const taskWithSignedUrls = {
+            ...task.toJSON(),
+            photos: signedPhotoUrls,
+        };
+
+        res.json(taskWithSignedUrls);
 
         res.json(task);
     } catch (error) {
@@ -520,93 +666,6 @@ exports.getHiddenTasks = async (req, res) => {
     } catch (error) {
         console.error('Error fetching hidden tasks:', error);
         res.status(500).json({ error: 'Failed to fetch hidden tasks.' });
-    }
-};
-
-
-
-// Get tasks accepted by a specific helper (tasker)
-exports.getTasksByHelper = async (req, res) => {
-    const taskerId = req.params.taskerId;
-
-    try {
-        // Validate taskerId
-        if (!taskerId) {
-            return res.status(400).json({ error: 'Tasker ID is required.' });
-        }
-
-        // Fetch hidden task IDs for the helper
-        const hiddenTaskIds = await TaskHide.findAll({
-            where: { userId: taskerId },
-            attributes: ['taskId'],
-        }).then(hides => hides.map(hide => hide.taskId));
-
-        // Fetch all tasks accepted by the helper
-        const allTasks = await Task.findAll({
-            where: {
-                taskerAcceptedId: taskerId,
-            },
-            include: [
-                {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'firstName', 'lastName', 'profilePhotoUrl'],
-                },
-                {
-                    model: Offer,
-                    as: 'offers',
-                    include: [
-                        {
-                            model: User,
-                            as: 'tasker',
-                            attributes: ['id', 'firstName', 'lastName', 'profilePhotoUrl'],
-                        },
-                    ],
-                },
-                {
-                    model: Chat,
-                    as: 'activeChat',
-                    include: [
-                        {
-                            model: Review,
-                            as: 'reviews',
-                            required: false,
-                            attributes: ['id', 'rating', 'review', 'reviewedUserId'],
-                        },
-                    ],
-                },
-            ],
-        });
-
-        // Filter out hidden tasks for displaying
-        const visibleTasks = allTasks.filter(task => !hiddenTaskIds.includes(task.id));
-
-        // Calculate total reviews and average rating including hidden tasks
-        let totalReviews = 0;
-        let totalRating = 0;
-
-        allTasks.forEach(task => {
-            if (task.activeChat && task.activeChat.reviews) {
-                task.activeChat.reviews.forEach(review => {
-                    if (parseInt(review.reviewedUserId) === parseInt(taskerId)) {
-                        totalReviews += 1;
-                        totalRating += review.rating;
-                    }
-                });
-            }
-        });
-
-        // Calculate the average rating
-        const averageRating = totalReviews > 0 ? (totalRating / totalReviews).toFixed(1) : null;
-
-        res.status(200).json({
-            tasks: visibleTasks, // Return only visible tasks
-            averageRating,
-            reviewCount: totalReviews,
-        });
-    } catch (error) {
-        console.error('Error fetching tasks by helper:', error);
-        res.status(500).json({ error: 'Failed to fetch tasks for helper.' });
     }
 };
 

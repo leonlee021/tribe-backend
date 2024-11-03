@@ -108,7 +108,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
     },
     photos: {  // New field to store multiple photo URLs
-      type: DataTypes.JSON, // Store as a JSON array
+      type: DataTypes.ARRAY(DataTypes.STRING), // Array of S3 object keys
       allowNull: true,      // Optional
       validate: {
         isArrayLengthValid(value) {
