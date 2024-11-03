@@ -22,13 +22,10 @@ module.exports = {
     // Step 3: Loop through each task to migrate data
     for (const task of tasks) {
       if (task.photos) {
-        const photosArray = task.photos.map(photo => photo); // Adjusted to avoid JSON structure
+        const photosArray = task.photos.map(photo => `'${photo}'`).join(','); // Convert to string format for SQL
         await queryInterface.sequelize.query(
-          `UPDATE "Tasks" SET "photos_temp" = :photosArray WHERE "id" = :id;`,
-          {
-            replacements: { photosArray, id: task.id },
-            type: Sequelize.QueryTypes.UPDATE,
-          }
+          `UPDATE "Tasks" SET "photos_temp" = ARRAY[${photosArray}]::text[] WHERE "id" = ${task.id};`,
+          { type: Sequelize.QueryTypes.UPDATE }
         );
       }
     }
