@@ -2,11 +2,16 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    // Step 1: Add a new temporary column for photos with ARRAY(TEXT) type
-    await queryInterface.addColumn('Tasks', 'photos_temp', {
-      type: Sequelize.ARRAY(Sequelize.STRING),
-      allowNull: true,
-    });
+    // Check if the photos_temp column already exists
+    const tableInfo = await queryInterface.describeTable('Tasks');
+    
+    if (!tableInfo.photos_temp) {
+      // Step 1: Add a new temporary column for photos with ARRAY(TEXT) type
+      await queryInterface.addColumn('Tasks', 'photos_temp', {
+        type: Sequelize.ARRAY(Sequelize.STRING),
+        allowNull: true,
+      });
+    }
 
     // Step 2: Fetch all task records
     const tasks = await queryInterface.sequelize.query(
@@ -37,10 +42,14 @@ module.exports = {
 
   down: async (queryInterface, Sequelize) => {
     // Revert the 'photos' column to JSON type
-    await queryInterface.addColumn('Tasks', 'photos_temp', {
-      type: Sequelize.JSON,
-      allowNull: true,
-    });
+    const tableInfo = await queryInterface.describeTable('Tasks');
+
+    if (!tableInfo.photos_temp) {
+      await queryInterface.addColumn('Tasks', 'photos_temp', {
+        type: Sequelize.JSON,
+        allowNull: true,
+      });
+    }
 
     const tasks = await queryInterface.sequelize.query(
       `SELECT id, photos FROM "Tasks";`,
