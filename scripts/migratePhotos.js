@@ -32,22 +32,19 @@ const migratePhotos = async () => {
                 continue;
             }
 
+            // Enforce maximum of 5 photos per task
+            if (photoKeys.length > 5) {
+                console.warn(`Task ID ${task.id} has more than 5 photos. Truncating to first 5.`);
+                photoKeys.length = 5; // Keep only first 5 photos
+            }
+
             // Update the task with the array of S3 object keys
-            // Determine if the `photos` field is JSON or text[]
-            // Adjust accordingly
-
-            // Example for JSON/JSONB
-
             await task.update({
-                photos: JSON.stringify(photoKeys),
+                photos: photoKeys, // Set as array, not JSON string
                 updatedAt: new Date(),
             });
 
-            // Example for text[] (array of strings)
-            // await task.update({
-            //     photos: photoKeys,
-            //     updatedAt: new Date(),
-            // });
+            console.log(`Task ID ${task.id} photos updated successfully.`);
         }
 
         console.log('Photo migration completed successfully.');
