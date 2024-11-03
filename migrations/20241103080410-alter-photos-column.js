@@ -8,31 +8,35 @@ module.exports = {
       allowNull: true,
     });
 
-    // Step 2: Copy data from JSON `photos` column to ARRAY `photos_temp`
+    // Step 2: Fetch all task records
     const tasks = await queryInterface.sequelize.query(
       `SELECT id, photos FROM "Tasks";`,
       { type: Sequelize.QueryTypes.SELECT }
     );
 
+    // Step 3: Loop through each task to migrate data
     for (const task of tasks) {
       if (task.photos) {
-        const photosArray = task.photos.map(photo => photo); // Assuming `photos` is already an array of strings
+        const photosArray = task.photos.map(photo => photo); // Adjusted to avoid JSON structure
         await queryInterface.sequelize.query(
-          `UPDATE "Tasks" SET "photos_temp" = :photosArray WHERE id = :id;`,
-          { replacements: { photosArray, id: task.id } }
+          `UPDATE "Tasks" SET "photos_temp" = :photosArray WHERE "id" = :id;`,
+          {
+            replacements: { photosArray, id: task.id },
+            type: Sequelize.QueryTypes.UPDATE,
+          }
         );
       }
     }
 
-    // Step 3: Drop the original 'photos' column
+    // Step 4: Drop the original 'photos' column
     await queryInterface.removeColumn('Tasks', 'photos');
 
-    // Step 4: Rename 'photos_temp' to 'photos'
+    // Step 5: Rename 'photos_temp' to 'photos'
     await queryInterface.renameColumn('Tasks', 'photos_temp', 'photos');
   },
 
   down: async (queryInterface, Sequelize) => {
-    // Revert to JSON column type if needed
+    // Revert the 'photos' column to JSON type
     await queryInterface.addColumn('Tasks', 'photos_temp', {
       type: Sequelize.JSON,
       allowNull: true,
@@ -47,8 +51,11 @@ module.exports = {
       if (task.photos) {
         const photosJson = JSON.stringify(task.photos);
         await queryInterface.sequelize.query(
-          `UPDATE "Tasks" SET "photos_temp" = :photosJson WHERE id = :id;`,
-          { replacements: { photosJson, id: task.id } }
+          `UPDATE "Tasks" SET "photos_temp" = :photosJson WHERE "id" = :id;`,
+          {
+            replacements: { photosJson, id: task.id },
+            type: Sequelize.QueryTypes.UPDATE,
+          }
         );
       }
     }
