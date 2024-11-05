@@ -337,41 +337,41 @@ exports.getAllTasks = async (req, res) => {
             order: [['createdAt', 'DESC']],
         });
 
-        // Map through tasks to add additional context
-        const tasksWithCounts = tasks.map(task => {
-            const appliedByCount = task.offers.length;
-            const userHasApplied = userId
-                ? task.offers.some(offer => offer.taskerId === userId)
-                : false;
-
-            return {
-                ...task.toJSON(),
-                appliedByCount,
-                userHasApplied,
-            };
-        });
-
-        // Generate pre-signed URLs for each task's photos
-        const tasksWithSignedUrls = await Promise.all(tasks.map(async (task) => {
-            const signedPhotoUrls = await Promise.all(task.photos.map(async (photoKey) => {
+    // Map through tasks to add additional context and generate pre-signed URLs
+    const tasksWithDetails = await Promise.all(
+        tasks.map(async (task) => {
+          const appliedByCount = task.offers.length;
+          const userHasApplied = userId
+            ? task.offers.some((offer) => offer.taskerId === userId)
+            : false;
+  
+          // Generate pre-signed URLs for each task's photos
+          let signedPhotoUrls = [];
+          if (Array.isArray(task.photos) && task.photos.length > 0) {
+            signedPhotoUrls = await Promise.all(
+              task.photos.map(async (photoKey) => {
                 const params = {
-                    Bucket: process.env.S3_BUCKET_NAME,
-                    Key: photoKey,
-                    Expires: 60 * 60, // 1 hour
+                  Bucket: process.env.S3_BUCKET_NAME,
+                  Key: photoKey,
+                  Expires: 60 * 60, // 1 hour
                 };
                 const url = s3.getSignedUrl('getObject', params);
                 return url;
-            }));
-
-            return {
-                ...task.toJSON(),
-                photos: signedPhotoUrls, // Replace object keys with pre-signed URLs
-            };
-        }));
-
-    
-        res.json(tasksWithCounts);
-        res.json(tasksWithSignedUrls);
+              })
+            );
+          }
+  
+          return {
+            ...task.toJSON(),
+            appliedByCount,
+            userHasApplied,
+            photos: signedPhotoUrls, // Replace object keys with pre-signed URLs
+          };
+        })
+      );
+  
+      // Send the combined response
+      res.json(tasksWithDetails);
     } catch (err) {
         console.error('Error fetching all tasks:', err);
         res.status(500).json({ error: 'Failed to fetch all tasks.' });
@@ -416,15 +416,18 @@ exports.getTaskById = async (req, res) => {
         }
 
         // Generate pre-signed URLs for task photos
-        const signedPhotoUrls = await Promise.all(task.photos.map(async (photoKey) => {
-            const params = {
-                Bucket: process.env.S3_BUCKET_NAME,
-                Key: photoKey,
-                Expires: 60 * 60, // 1 hour
-            };
-            const url = s3.getSignedUrl('getObject', params);
-            return url;
-        }));
+        let signedPhotoUrls = [];
+        if (Array.isArray(task.photos) && task.photos.length > 0) {
+            signedPhotoUrls = await Promise.all(task.photos.map(async (photoKey) => {
+                const params = {
+                    Bucket: process.env.S3_BUCKET_NAME,
+                    Key: photoKey,
+                    Expires: 60 * 60, // 1 hour
+                };
+                const url = s3.getSignedUrl('getObject', params);
+                return url;
+            }));
+        }
 
         const taskWithSignedUrls = {
             ...task.toJSON(),
@@ -432,8 +435,6 @@ exports.getTaskById = async (req, res) => {
         };
 
         res.json(taskWithSignedUrls);
-
-        res.json(task);
     } catch (error) {
         console.error('Error fetching task by ID:', error);
         res.status(500).json({ error: 'Failed to fetch task.' });
