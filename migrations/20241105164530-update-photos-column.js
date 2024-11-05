@@ -17,16 +17,16 @@ module.exports = {
 
     // 3. Alter 'photos' column to TEXT[] and migrate data
     await queryInterface.sequelize.transaction(async (transaction) => {
-      // Create a temporary column to hold TEXT[] data
-      await queryInterface.addColumn('Tasks', 'photos_temp', {
-        type: Sequelize.ARRAY(Sequelize.TEXT),
-        allowNull: true,
-      }, { transaction });
+      // Create a temporary column to hold TEXT[] data using raw SQL
+      await queryInterface.sequelize.query(`
+        ALTER TABLE "Tasks"
+        ADD COLUMN "photos_temp" TEXT[];
+      `, { transaction });
 
       // Migrate data from 'photos' JSON column to 'photos_temp' TEXT[] column
       await queryInterface.sequelize.query(`
         UPDATE "Tasks"
-        SET "photos_temp" = array(
+        SET "photos_temp" = ARRAY(
           SELECT json_array_elements_text("photos")
         )
         WHERE "photos" IS NOT NULL;
@@ -44,10 +44,10 @@ module.exports = {
     // Revert 'photos' column back to JSON
     await queryInterface.sequelize.transaction(async (transaction) => {
       // Create a temporary column to hold JSON data
-      await queryInterface.addColumn('Tasks', 'photos_temp', {
-        type: Sequelize.JSON,
-        allowNull: true,
-      }, { transaction });
+      await queryInterface.sequelize.query(`
+        ALTER TABLE "Tasks"
+        ADD COLUMN "photos_temp" JSON;
+      `, { transaction });
 
       // Migrate data from 'photos' TEXT[] column to 'photos_temp' JSON column
       await queryInterface.sequelize.query(`
@@ -61,8 +61,6 @@ module.exports = {
 
       // Rename 'photos_temp' back to 'photos'
       await queryInterface.renameColumn('Tasks', 'photos_temp', 'photos', { transaction });
-
-      // (Optional) Recreate 'photoUrl' and 'photos_temp' columns if needed
     });
   },
 };
