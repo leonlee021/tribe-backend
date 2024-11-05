@@ -8,7 +8,7 @@ module.exports = {
     if (!tableInfo.photos_temp) {
       // Step 1: Add a new temporary column for photos with ARRAY(TEXT) type
       await queryInterface.addColumn('Tasks', 'photos_temp', {
-        type: Sequelize.ARRAY(Sequelize.TEXT), // Use TEXT instead of STRING
+        type: Sequelize.ARRAY(Sequelize.TEXT),
         allowNull: true,
       });
     }
@@ -22,10 +22,19 @@ module.exports = {
     // Step 3: Loop through each task to migrate data
     for (const task of tasks) {
       if (task.photos) {
-        const photosArray = task.photos.map(photo => `'${photo}'`).join(','); // Convert to string format for SQL
-        await queryInterface.sequelize.query(
-          `UPDATE "Tasks" SET "photos_temp" = ARRAY[${photosArray}]::text[] WHERE "id" = ${task.id};`,
-          { type: Sequelize.QueryTypes.UPDATE }
+        // Ensure photos are parsed correctly
+        let photosArray = task.photos;
+
+        // If photos are stored as JSON strings, parse them
+        if (typeof photosArray === 'string') {
+          photosArray = JSON.parse(photosArray);
+        }
+
+        // Update the photos_temp column using parameterized queries
+        await queryInterface.bulkUpdate(
+          'Tasks',
+          { photos_temp: photosArray },
+          { id: task.id }
         );
       }
     }
@@ -55,13 +64,14 @@ module.exports = {
 
     for (const task of tasks) {
       if (task.photos) {
+        // Convert the array to JSON string
         const photosJson = JSON.stringify(task.photos);
-        await queryInterface.sequelize.query(
-          `UPDATE "Tasks" SET "photos_temp" = :photosJson WHERE "id" = :id;`,
-          {
-            replacements: { photosJson, id: task.id },
-            type: Sequelize.QueryTypes.UPDATE,
-          }
+
+        // Update the photos_temp column using parameterized queries
+        await queryInterface.bulkUpdate(
+          'Tasks',
+          { photos_temp: Sequelize.cast(Sequelize.literal(`'${photosJson}'`), 'JSON') },
+          { id: task.id }
         );
       }
     }
