@@ -78,7 +78,6 @@ exports.getAllUsers = async (req, res) => {
 // Get Authenticated User Profile
 exports.getUserProfile = async (req, res) => {
     try {
-        // Fetch the authenticated user's ID
         const userId = await getAuthenticatedUserId(req);
 
         if (!userId) {
@@ -87,23 +86,11 @@ exports.getUserProfile = async (req, res) => {
         }
 
         const userProfile = await User.findOne({
-            where: { id: userId }, // Use 'id' instead of 'firebaseUid'
+            where: { id: userId },
             attributes: [
-                'id',
-                'firstName',
-                'lastName',
-                'email',
-                'about',
-                'location',
-                'experience',
-                'age',
-                'gender',
-                'profilePhotoUrl',
-                'stripeCustomerId',
-                'averageRating',
-                'ratingsCount',
-                'createdAt',
-                'updatedAt'
+                'id', 'firstName', 'lastName', 'email', 'about', 'location', 
+                'experience', 'age', 'gender', 'profilePhotoUrl', 'stripeCustomerId',
+                'averageRating', 'ratingsCount', 'createdAt', 'updatedAt'
             ],
             include: [
                 {
@@ -125,6 +112,16 @@ exports.getUserProfile = async (req, res) => {
             return res.status(404).json({ error: 'User profile not found' });
         }
 
+        // Generate a pre-signed URL for the profile photo if it exists
+        if (userProfile.profilePhotoUrl) {
+            const photoUrl = s3.getSignedUrl('getObject', {
+                Bucket: process.env.S3_BUCKET_NAME,
+                Key: userProfile.profilePhotoUrl,
+                Expires: 60 * 60 * 24, // 24 hours
+            });
+            userProfile.profilePhotoUrl = photoUrl;
+        }
+
         res.json(userProfile);
     } catch (error) {
         console.error('Error fetching user profile:', error.message);
@@ -137,23 +134,14 @@ exports.getUserProfileById = async (req, res) => {
     try {
         const { userId } = req.params;
 
-        // Validate userId
         if (!userId) {
             return res.status(400).json({ error: 'User ID is required' });
         }
 
         const user = await User.findByPk(userId, {
             attributes: [
-                'id',
-                'firstName',
-                'lastName',
-                'about',
-                'location',
-                'experience',
-                'age',
-                'gender',
-                'averageRating',
-                'ratingsCount',
+                'id', 'firstName', 'lastName', 'about', 'location', 
+                'experience', 'age', 'gender', 'averageRating', 'ratingsCount', 
                 'profilePhotoUrl'
             ],
             include: [
@@ -176,12 +164,23 @@ exports.getUserProfileById = async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        // Generate a pre-signed URL for the profile photo if it exists
+        if (user.profilePhotoUrl) {
+            const photoUrl = s3.getSignedUrl('getObject', {
+                Bucket: process.env.S3_BUCKET_NAME,
+                Key: user.profilePhotoUrl,
+                Expires: 60 * 60 * 24, // 24 hours
+            });
+            user.profilePhotoUrl = photoUrl;
+        }
+
         res.json(user);
     } catch (error) {
         console.error('Error fetching user profile by ID:', error);
         res.status(500).json({ error: error.message });
     }
 };
+
 
 // Update Authenticated User Profile
 exports.updateUserProfile = async (req, res) => {
@@ -221,9 +220,9 @@ exports.updateUserProfile = async (req, res) => {
 };
 
 // Upload Profile Photo for Authenticated User
+// Upload Profile Photo for Authenticated User
 exports.uploadProfilePhoto = async (req, res) => {
     try {
-        // Fetch the authenticated user's ID
         const userId = await getAuthenticatedUserId(req);
 
         if (!userId) {
@@ -231,53 +230,43 @@ exports.uploadProfilePhoto = async (req, res) => {
             return res.status(401).json({ error: 'User authentication required.' });
         }
 
-        // Ensure a file was uploaded
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        // Generate a unique file name
         const fileExtension = req.file.originalname.split('.').pop();
         const fileName = `profile_photos/${userId}/${uuidv4()}.${fileExtension}`;
 
-        // Set up S3 upload parameters
         const params = {
-            Bucket: process.env.S3_BUCKET_NAME, // Ensure this is set in your environment variables
+            Bucket: process.env.S3_BUCKET_NAME,
             Key: fileName,
             Body: req.file.buffer,
             ContentType: req.file.mimetype,
         };
 
-        // Uploading files to the bucket
         s3.upload(params, async (err, data) => {
             if (err) {
                 console.error('Error uploading to S3:', err);
                 return res.status(500).json({ error: 'Error uploading file' });
             }
 
-            // Construct the URL to access the uploaded image using a pre-signed URL
-            const profilePhotoUrl = s3.getSignedUrl('getObject', {
-                Bucket: process.env.S3_BUCKET_NAME,
-                Key: fileName,
-                Expires: 60 * 60, // URL valid for 1 hour
-            });
-            
-            // Update the user's profilePhotoUrl
+            // Update the user's profilePhotoUrl with the S3 object key, not a pre-signed URL
             const user = await User.findByPk(userId);
             if (!user) {
                 return res.status(404).json({ error: 'User not found' });
             }
 
-            user.profilePhotoUrl = profilePhotoUrl;
+            user.profilePhotoUrl = fileName; // Store S3 key
             await user.save();
 
-            res.status(200).json({ profilePhotoUrl });
+            res.status(200).json({ message: 'Profile photo uploaded successfully.' });
         });
     } catch (error) {
         console.error('Error uploading profile photo:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
+
 
 // Delete Authenticated User Account
 exports.deleteUserAccount = async (req, res) => {
