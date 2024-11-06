@@ -122,6 +122,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true, // It's optional because the user may not have granted permissions
     },
+    fcmToken: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Firebase Cloud Messaging token for push notifications'
+    }
   }, {
     sequelize,
     modelName: 'User',

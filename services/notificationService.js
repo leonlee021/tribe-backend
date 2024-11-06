@@ -1,36 +1,83 @@
-// services/notificationService.js
+const admin = require('../firebaseAdmin.js');
+const { User, Notification } = require('../models');
 
-const { Expo } = require('expo-server-sdk');
-
-// Create a new Expo SDK client
-let expo = new Expo();
-
-const sendPushNotification = async (pushToken, title, body, data = {}) => {
-  // Validate the push token
-  if (!Expo.isExpoPushToken(pushToken)) {
-    console.error(`Push token ${pushToken} is not a valid Expo push token`);
-    return;
-  }
-
-  const messages = [];
-  messages.push({
-    to: pushToken,
-    sound: 'default',
-    title,
-    body,
-    data,
-  });
-
+const sendPushNotification = async (fcmToken, title, body, data = {}) => {
   try {
-    const chunks = expo.chunkPushNotifications(messages);
-    for (const chunk of chunks) {
-      await expo.sendPushNotificationsAsync(chunk);
-    }
+    const message = {
+      notification: {
+        title,
+        body,
+      },
+      data: {
+        ...data,
+        type: data.type || 'activity',
+        taskId: data.taskId?.toString() || '',
+      },
+      token: fcmToken,
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'default',
+          priority: 'high',
+          defaultSound: true,
+          defaultVibrateTimings: true,
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1,
+          },
+        },
+      },
+    };
+
+    const response = await admin.messaging().send(message);
+    console.log('Successfully sent notification:', response);
+    return response;
   } catch (error) {
     console.error('Error sending push notification:', error);
+    throw error;
   }
 };
 
-module.exports = {
-  sendPushNotification,
+const notificationService = {
+  sendNotification: async (userId, title, body, notificationType, taskId = null) => {
+    try {
+      const user = await User.findByPk(userId);
+      if (!user?.fcmToken) {
+        console.log('No FCM token found for user:', userId);
+        return;
+      }
+
+      // Create notification in database
+      const notification = await Notification.create({
+        userId,
+        taskId,
+        message: body,
+        type: notificationType,
+        isRead: false
+      });
+
+      // Send push notification
+      await sendPushNotification(
+        user.fcmToken,
+        title,
+        body,
+        {
+          type: notificationType,
+          taskId,
+          notificationId: notification.id.toString()
+        }
+      );
+
+      return notification;
+    } catch (error) {
+      console.error('Error in notification service:', error);
+      throw error;
+    }
+  }
 };
+
+module.exports = notificationService;
