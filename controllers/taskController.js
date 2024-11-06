@@ -298,7 +298,6 @@ exports.getAllTasks = async (req, res) => {
 
         // Fetch all tasks with related data
         const tasks = await Task.findAll({
-            
             include: [
                 {
                     model: User,
@@ -337,41 +336,74 @@ exports.getAllTasks = async (req, res) => {
             order: [['createdAt', 'DESC']],
         });
 
-    // Map through tasks to add additional context and generate pre-signed URLs
-    const tasksWithDetails = await Promise.all(
-        tasks.map(async (task) => {
-          const appliedByCount = task.offers.length;
-          const userHasApplied = userId
-            ? task.offers.some((offer) => offer.taskerId === userId)
-            : false;
-  
-          // Generate pre-signed URLs for each task's photos
-          let signedPhotoUrls = [];
-          if (Array.isArray(task.photos) && task.photos.length > 0) {
-            signedPhotoUrls = await Promise.all(
-              task.photos.map(async (photoKey) => {
-                const params = {
-                  Bucket: process.env.S3_BUCKET_NAME,
-                  Key: photoKey,
-                  Expires: 60 * 60, // 1 hour
+        // Map through tasks to add additional context and generate pre-signed URLs
+        const tasksWithDetails = await Promise.all(
+            tasks.map(async (task) => {
+                const appliedByCount = task.offers.length;
+                const userHasApplied = userId
+                    ? task.offers.some((offer) => offer.taskerId === userId)
+                    : false;
+
+                // Generate pre-signed URLs for each task's photos
+                let signedPhotoUrls = [];
+                if (Array.isArray(task.photos) && task.photos.length > 0) {
+                    signedPhotoUrls = await Promise.all(
+                        task.photos.map(async (photoKey) => {
+                            const params = {
+                                Bucket: process.env.S3_BUCKET_NAME,
+                                Key: photoKey,
+                                Expires: 60 * 60, // 1 hour
+                            };
+                            return s3.getSignedUrl('getObject', params);
+                        })
+                    );
+                }
+
+                // Generate a pre-signed URL for the profile photo of the task owner
+                let userProfilePhotoUrl = null;
+                if (task.user?.profilePhotoUrl) {
+                    userProfilePhotoUrl = s3.getSignedUrl('getObject', {
+                        Bucket: process.env.S3_BUCKET_NAME,
+                        Key: task.user.profilePhotoUrl,
+                        Expires: 60 * 60 * 24, // 24 hours
+                    });
+                }
+
+                // Generate pre-signed URLs for each offer's tasker profile photo
+                const offersWithSignedUrls = task.offers.map((offer) => {
+                    let taskerProfilePhotoUrl = null;
+                    if (offer.tasker?.profilePhotoUrl) {
+                        taskerProfilePhotoUrl = s3.getSignedUrl('getObject', {
+                            Bucket: process.env.S3_BUCKET_NAME,
+                            Key: offer.tasker.profilePhotoUrl,
+                            Expires: 60 * 60 * 24, // 24 hours
+                        });
+                    }
+                    return {
+                        ...offer.toJSON(),
+                        tasker: {
+                            ...offer.tasker.toJSON(),
+                            profilePhotoUrl: taskerProfilePhotoUrl,
+                        },
+                    };
+                });
+
+                return {
+                    ...task.toJSON(),
+                    appliedByCount,
+                    userHasApplied,
+                    photos: signedPhotoUrls, // Replace object keys with pre-signed URLs
+                    user: {
+                        ...task.user.toJSON(),
+                        profilePhotoUrl: userProfilePhotoUrl, // Updated profile photo URL for the task owner
+                    },
+                    offers: offersWithSignedUrls, // Updated offers with tasker profile photos
                 };
-                const url = s3.getSignedUrl('getObject', params);
-                return url;
-              })
-            );
-          }
-  
-          return {
-            ...task.toJSON(),
-            appliedByCount,
-            userHasApplied,
-            photos: signedPhotoUrls, // Replace object keys with pre-signed URLs
-          };
-        })
-      );
-  
-      // Send the combined response
-      res.json(tasksWithDetails);
+            })
+        );
+
+        // Send the combined response
+        res.json(tasksWithDetails);
     } catch (err) {
         console.error('Error fetching all tasks:', err);
         res.status(500).json({ error: 'Failed to fetch all tasks.' });
