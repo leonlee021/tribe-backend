@@ -1,81 +1,50 @@
 // scripts/testNotification.js
+require('dotenv').config();
 const admin = require('../firebaseAdmin');
-const { User } = require('../models');
+const { User, sequelize } = require('../models');
 
 async function sendTestNotification(userEmail) {
+  let connection;
   try {
-    // Find user and their FCM token
+    // Test database connection first
+    try {
+      await sequelize.authenticate();
+      console.log('Database connection has been established successfully.');
+    } catch (dbError) {
+      console.error('Unable to connect to the database:', dbError);
+      process.exit(1);
+    }
+
+    // Find user
     const user = await User.findOne({ 
-      where: { email: userEmail }
+      where: { email: userEmail },
+      attributes: ['id', 'email', 'fcmToken', 'firstName', 'lastName']
     });
 
-    if (!user || !user.fcmToken) {
-      console.log('User not found or no FCM token available');
-      return;
+    if (!user) {
+      console.log('User not found:', userEmail);
+      process.exit(1);
+    }
+
+    if (!user.fcmToken) {
+      console.log('No FCM token found for user:', userEmail);
+      process.exit(1);
     }
 
     console.log('Found user:', user.email);
     console.log('FCM Token:', user.fcmToken);
 
-    // Create notification message
-    const message = {
-      notification: {
-        title: 'Test Notification',
-        body: 'This is a test notification from your app!'
-      },
-      data: {
-        type: 'activity',
-        taskId: '1',
-        click_action: 'FLUTTER_NOTIFICATION_CLICK'
-      },
-      android: {
-        priority: 'high',
-        notification: {
-          channelId: 'default',
-          priority: 'high',
-          defaultSound: true,
-          defaultVibrateTimings: true,
-        }
-      },
-      apns: {
-        payload: {
-          aps: {
-            sound: 'default',
-            badge: 1,
-            contentAvailable: true
-          }
-        }
-      },
-      token: user.fcmToken
-    };
-
-    // Send the message
-    const response = await admin.messaging().send(message);
-    console.log('Successfully sent notification:', response);
-  } catch (error) {
-    console.error('Error sending notification:', error);
-  }
-}
-
-// Test different notification types
-async function sendMultipleTestNotifications(userEmail) {
-  try {
-    const user = await User.findOne({ where: { email: userEmail } });
-    if (!user || !user.fcmToken) {
-      console.log('User not found or no FCM token available');
-      return;
-    }
-
+    // Send test notifications
     const notifications = [
       {
-        title: 'New Activity',
-        body: 'Someone has sent you a new task offer!',
+        title: 'Test Activity',
+        body: `Hello ${user.firstName}, this is a test activity notification!`,
         type: 'activity',
         taskId: '1'
       },
       {
-        title: 'New Message',
-        body: 'You have a new message in chat',
+        title: 'Test Chat',
+        body: 'This is a test chat notification',
         type: 'chat',
         taskId: '1'
       }
@@ -89,28 +58,57 @@ async function sendMultipleTestNotifications(userEmail) {
         },
         data: {
           type: notif.type,
-          taskId: notif.taskId
+          taskId: notif.taskId,
+          click_action: 'FLUTTER_NOTIFICATION_CLICK'
+        },
+        android: {
+          priority: 'high',
+          notification: {
+            channelId: 'default'
+          }
+        },
+        apns: {
+          payload: {
+            aps: {
+              sound: 'default',
+              badge: 1
+            }
+          }
         },
         token: user.fcmToken
       };
 
-      const response = await admin.messaging().send(message);
-      console.log(`Sent ${notif.type} notification:`, response);
-      
+      try {
+        const response = await admin.messaging().send(message);
+        console.log(`Successfully sent ${notif.type} notification:`, response);
+      } catch (fcmError) {
+        console.error(`Error sending ${notif.type} notification:`, fcmError);
+      }
+
       // Wait 2 seconds between notifications
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
   } catch (error) {
-    console.error('Error sending test notifications:', error);
+    console.error('Error in test script:', error);
+  } finally {
+    // Close database connection
+    await sequelize.close();
   }
 }
 
-// Usage
+// Get email from command line argument
 const userEmail = process.argv[2];
 if (!userEmail) {
   console.error('Please provide a user email');
+  console.error('Usage: node scripts/testNotification.js user@example.com');
   process.exit(1);
 }
 
-console.log('Sending test notifications to:', userEmail);
-sendMultipleTestNotifications(userEmail);
+console.log('Starting notification test for:', userEmail);
+sendTestNotification(userEmail).then(() => {
+  console.log('Test script completed');
+  process.exit(0);
+}).catch(error => {
+  console.error('Test script failed:', error);
+  process.exit(1);
+});

@@ -7,9 +7,18 @@ const notificationController = {
     try {
       const { fcmToken } = req.body;
       const email = req.user.email;
+    
+      console.log('Updating FCM token for user:', email);
+      console.log('New FCM token:', fcmToken);
+
+      if (!fcmToken) {
+        console.log('FCM token missing in request');
+        return res.status(400).json({ error: 'FCM token is required' });
+      }
 
       const user = await User.findOne({ where: { email } });
       if (!user) {
+        console.log('User not found:', email);
         return res.status(404).json({ error: 'User not found' });
       }
 
@@ -18,10 +27,35 @@ const notificationController = {
         { where: { id: user.id } }
       );
 
+      console.log('FCM token updated successfully for user:', email);
+
       res.json({ success: true, message: 'FCM token updated successfully' });
     } catch (error) {
       console.error('Error updating FCM token:', error);
       res.status(500).json({ error: 'Failed to update FCM token' });
+    }
+  },
+
+  checkFcmToken: async (req, res) => {
+    try {
+      const email = req.user.email;
+      const user = await User.findOne({ 
+        where: { email },
+        attributes: ['id', 'email', 'fcmToken']
+      });
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      res.json({
+        email: user.email,
+        fcmToken: user.fcmToken,
+        hasToken: !!user.fcmToken
+      });
+    } catch (error) {
+      console.error('Error checking FCM token:', error);
+      res.status(500).json({ error: 'Failed to check FCM token' });
     }
   },
 
