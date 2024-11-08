@@ -3,6 +3,7 @@
 const { Chat, Message, User, Task, Review, Cancellation, Offer, Notification } = require('../models');
 const { Op } = require('sequelize');
 const getAuthenticatedUserId = require('../utils/getAuthenticatedUserId'); // Import the utility function
+const admin = require('../firebaseAdmin');
 
 module.exports = {
   // Create a new chat
@@ -109,8 +110,6 @@ module.exports = {
     try {
       const { content } = req.body;
       const chatId = req.params.id;
-
-      // Fetch the authenticated user's ID
       const senderId = await getAuthenticatedUserId(req);
 
       if (!senderId) {
@@ -127,6 +126,18 @@ module.exports = {
       const chat = await Chat.findOne({
         where: { id: chatId },
         attributes: ['id', 'requesterId', 'taskerId', 'taskId', 'status'],
+        include: [
+          {
+            model: User,
+            as: 'requester',
+            attributes: ['id', 'firstName', 'lastName', 'fcmToken']
+          },
+          {
+            model: User,
+            as: 'tasker',
+            attributes: ['id', 'firstName', 'lastName', 'fcmToken']
+          }
+        ]
       });
 
       if (!chat) {
@@ -138,6 +149,8 @@ module.exports = {
       }
 
       const recipientId = chat.requesterId === senderId ? chat.taskerId : chat.requesterId;
+      const recipient = chat.requesterId === senderId ? chat.tasker : chat.requester;
+      const sender = chat.requesterId === senderId ? chat.requester : chat.tasker;
 
       // Create the message
       const message = await Message.create({ content, senderId, chatId });
@@ -149,6 +162,73 @@ module.exports = {
         message: "new message",
         type: "chat",
       });
+
+      // Send push notification if recipient has FCM token
+      if (recipient.fcmToken) {
+        try {
+          // Basic message structure
+          const baseMessage = {
+            token: recipient.fcmToken,
+            notification: {
+              title: `Message from ${sender.firstName}`,
+              body: content.length > 100 ? `${content.substring(0, 97)}...` : content
+            },
+            data: {
+              type: 'chat',
+              chatId: chatId.toString(),
+              taskId: chat.taskId.toString(),
+              senderId: senderId.toString(),
+              click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            }
+          };
+
+          // Try Android-specific configuration first
+          const androidMessage = {
+            ...baseMessage,
+            android: {
+              priority: 'high',
+              notification: {
+                channelId: 'default',
+                sound: 'default',
+                priority: 'high',
+                defaultVibrateTimings: true
+              }
+            }
+          };
+
+          try {
+            await admin.messaging().send(androidMessage);
+          } catch (androidError) {
+            // If Android fails, try iOS-specific configuration
+            const iosMessage = {
+              ...baseMessage,
+              apns: {
+                headers: {
+                  'apns-priority': '10',
+                  'apns-push-type': 'alert'
+                },
+                payload: {
+                  aps: {
+                    alert: {
+                      title: baseMessage.notification.title,
+                      body: baseMessage.notification.body
+                    },
+                    sound: 'default',
+                    badge: 1,
+                    'content-available': 1
+                  },
+                  ...baseMessage.data
+                }
+              }
+            };
+
+            await admin.messaging().send(iosMessage);
+          }
+        } catch (pushError) {
+          // Log push notification error but don't fail the message send
+          console.error('Failed to send push notification:', pushError);
+        }
+      }
 
       res.status(201).json(message);
     } catch (error) {
