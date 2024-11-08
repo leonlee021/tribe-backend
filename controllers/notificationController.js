@@ -3,38 +3,118 @@ const { User, Notification } = require('../models');
 const getAuthenticatedUserId = require('../utils/getAuthenticatedUserId');
 
 const notificationController = {
-  updateFcmToken: async (req, res) => {
-    try {
-      const { fcmToken } = req.body;
-      const email = req.user.email;
-    
-      console.log('Updating FCM token for user:', email);
-      console.log('New FCM token:', fcmToken);
+    updateFcmToken: async (req, res) => {
+        try {
+            const { fcmToken, platform } = req.body;
+            const email = req.user.email;
 
-      if (!fcmToken) {
-        console.log('FCM token missing in request');
-        return res.status(400).json({ error: 'FCM token is required' });
-      }
+            console.log('Updating FCM token:', {
+            email,
+            platform,
+            tokenLength: fcmToken?.length
+            });
 
-      const user = await User.findOne({ where: { email } });
-      if (!user) {
-        console.log('User not found:', email);
-        return res.status(404).json({ error: 'User not found' });
-      }
+            if (!fcmToken) {
+            return res.status(400).json({ error: 'FCM token is required' });
+            }
 
-      await User.update(
-        { fcmToken },
-        { where: { id: user.id } }
-      );
+            const user = await User.findOne({ where: { email } });
+            if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+            }
 
-      console.log('FCM token updated successfully for user:', email);
+            // Update user with token and platform
+            await user.update({ 
+            fcmToken,
+            devicePlatform: platform // Make sure to add this field to your User model
+            });
 
-      res.json({ success: true, message: 'FCM token updated successfully' });
-    } catch (error) {
-      console.error('Error updating FCM token:', error);
-      res.status(500).json({ error: 'Failed to update FCM token' });
-    }
-  },
+            console.log('Token updated for user:', {
+            userId: user.id,
+            platform,
+            tokenUpdated: true
+            });
+
+            res.json({ 
+            success: true, 
+            message: 'FCM token updated successfully'
+            });
+        } catch (error) {
+            console.error('Error updating FCM token:', error);
+            res.status(500).json({ error: 'Failed to update FCM token' });
+        }
+        },
+
+        sendNotification: async (userId, title, body, data = {}) => {
+            try {
+              const user = await User.findByPk(userId);
+              if (!user?.fcmToken) {
+                console.log('No FCM token found for user:', userId);
+                return;
+              }
+        
+              const platform = user.devicePlatform || 'ios'; // Default to iOS if not specified
+              console.log('Sending notification to platform:', platform);
+        
+              let message = {
+                token: user.fcmToken,
+                notification: {
+                  title,
+                  body,
+                },
+                data: {
+                  ...data,
+                  click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                },
+              };
+        
+              // Add platform-specific configuration
+              if (platform === 'ios') {
+                message = {
+                  ...message,
+                  apns: {
+                    headers: {
+                      'apns-priority': '10',
+                      'apns-push-type': 'alert'
+                    },
+                    payload: {
+                      aps: {
+                        alert: {
+                          title,
+                          body,
+                        },
+                        sound: 'default',
+                        badge: 1,
+                        'content-available': 1
+                      },
+                      ...data
+                    }
+                  }
+                };
+              } else {
+                message = {
+                  ...message,
+                  android: {
+                    priority: 'high',
+                    notification: {
+                      channelId: 'default',
+                      sound: 'default',
+                      priority: 'high',
+                      defaultVibrateTimings: true
+                    }
+                  }
+                };
+              }
+        
+              const response = await admin.messaging().send(message);
+              console.log(`Successfully sent notification to ${platform}:`, response);
+              return response;
+            } catch (error) {
+              console.error('Error sending notification:', error);
+              throw error;
+            }
+          },
+
 
   checkFcmToken: async (req, res) => {
     try {

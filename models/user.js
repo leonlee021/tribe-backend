@@ -126,7 +126,12 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
       comment: 'Firebase Cloud Messaging token for push notifications'
-    }
+    },
+    devicePlatform: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: 'ios'
+    },
   }, {
     sequelize,
     modelName: 'User',

@@ -1,21 +1,13 @@
-// scripts/testNotification.js
+// scripts/testFcmNotification.js
 require('dotenv').config();
 const admin = require('../firebaseAdmin');
 const { User, sequelize } = require('../models');
 
 async function sendTestNotification(userEmail) {
-  let connection;
   try {
-    // Test database connection first
-    try {
-      await sequelize.authenticate();
-      console.log('Database connection has been established successfully.');
-    } catch (dbError) {
-      console.error('Unable to connect to the database:', dbError);
-      process.exit(1);
-    }
+    await sequelize.authenticate();
+    console.log('Database connection established successfully.');
 
-    // Find user
     const user = await User.findOne({ 
       where: { email: userEmail },
       attributes: ['id', 'email', 'fcmToken', 'firstName', 'lastName']
@@ -23,92 +15,124 @@ async function sendTestNotification(userEmail) {
 
     if (!user) {
       console.log('User not found:', userEmail);
-      process.exit(1);
-    }
-
-    if (!user.fcmToken) {
-      console.log('No FCM token found for user:', userEmail);
-      process.exit(1);
+      return;
     }
 
     console.log('Found user:', user.email);
     console.log('FCM Token:', user.fcmToken);
 
-    // Send test notifications
+    // Send test notifications with platform-specific configurations
     const notifications = [
       {
         title: 'Test Activity',
-        body: `Hello ${user.firstName}, this is a test activity notification!`,
-        type: 'activity',
-        taskId: '1'
+        body: `Hello ${user.firstName || 'there'}, this is a test activity notification!`,
+        type: 'activity'
       },
       {
         title: 'Test Chat',
         body: 'This is a test chat notification',
-        type: 'chat',
-        taskId: '1'
+        type: 'chat'
       }
     ];
 
     for (const notif of notifications) {
-      const message = {
-        notification: {
-          title: notif.title,
-          body: notif.body
-        },
-        data: {
-          type: notif.type,
-          taskId: notif.taskId,
-          click_action: 'FLUTTER_NOTIFICATION_CLICK'
-        },
-        android: {
-          priority: 'high',
+      try {
+        // Basic message structure without platform-specific configs
+        const baseMessage = {
+          token: user.fcmToken,
           notification: {
-            channelId: 'default'
+            title: notif.title,
+            body: notif.body
+          },
+          data: {
+            type: notif.type,
+            click_action: 'FLUTTER_NOTIFICATION_CLICK'
           }
-        },
-        apns: {
-          payload: {
-            aps: {
+        };
+
+        // Try sending Android-specific message first
+        const androidMessage = {
+          ...baseMessage,
+          android: {
+            priority: 'high',
+            notification: {
+              channelId: 'default',
               sound: 'default',
-              badge: 1
+              priority: 'high',
+              defaultVibrateTimings: true
             }
           }
-        },
-        token: user.fcmToken
-      };
+        };
 
-      try {
-        const response = await admin.messaging().send(message);
-        console.log(`Successfully sent ${notif.type} notification:`, response);
-      } catch (fcmError) {
-        console.error(`Error sending ${notif.type} notification:`, fcmError);
+        console.log(`Sending ${notif.type} notification (Android)...`);
+        try {
+          const response = await admin.messaging().send(androidMessage);
+          console.log(`Successfully sent ${notif.type} notification to Android:`, response);
+          continue; // If Android succeeds, skip iOS attempt
+        } catch (androidError) {
+          console.log('Android notification failed, trying iOS...');
+        }
+
+        // If Android fails, try iOS-specific message
+        const iosMessage = {
+          ...baseMessage,
+          apns: {
+            headers: {
+              'apns-priority': '10',
+              'apns-push-type': 'alert'
+            },
+            payload: {
+              aps: {
+                alert: {
+                  title: notif.title,
+                  body: notif.body
+                },
+                sound: 'default',
+                badge: 1,
+                'content-available': 1
+              },
+              notificationType: notif.type
+            }
+          }
+        };
+
+        console.log(`Sending ${notif.type} notification (iOS)...`);
+        const response = await admin.messaging().send(iosMessage);
+        console.log(`Successfully sent ${notif.type} notification to iOS:`, response);
+
+      } catch (error) {
+        console.error(`Error sending ${notif.type} notification:`, {
+          code: error.code,
+          message: error.message,
+          details: error.errorInfo
+        });
       }
 
-      // Wait 2 seconds between notifications
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Wait between notifications
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
+
   } catch (error) {
     console.error('Error in test script:', error);
   } finally {
-    // Close database connection
     await sequelize.close();
   }
 }
 
-// Get email from command line argument
-const userEmail = process.argv[2];
-if (!userEmail) {
-  console.error('Please provide a user email');
-  console.error('Usage: node scripts/testNotification.js user@example.com');
+const email = process.argv[2];
+if (!email) {
+  console.error('Please provide an email address');
+  console.error('Usage: node scripts/testFcmNotification.js user@example.com');
   process.exit(1);
 }
 
-console.log('Starting notification test for:', userEmail);
-sendTestNotification(userEmail).then(() => {
-  console.log('Test script completed');
-  process.exit(0);
-}).catch(error => {
-  console.error('Test script failed:', error);
-  process.exit(1);
-});
+console.log('Starting notification test for:', email);
+sendTestNotification(email)
+  .then(() => {
+    console.log('Test script completed');
+    process.exit(0);
+  })
+  .catch(error => {
+    console.error('Test script failed:', error);
+    process.exit(1);
+  });
