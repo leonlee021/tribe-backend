@@ -178,6 +178,9 @@ module.exports = {
               chatId: chatId.toString(),
               taskId: chat.taskId.toString(),
               senderId: senderId.toString(),
+              // message: content,
+              // timestamp: new Date().toISOString(),
+              // senderName: sender.firstName,
               click_action: 'FLUTTER_NOTIFICATION_CLICK'
             }
           };
@@ -191,7 +194,9 @@ module.exports = {
                 channelId: 'default',
                 sound: 'default',
                 priority: 'high',
-                defaultVibrateTimings: true
+                defaultVibrateTimings: true,
+                icon: '@drawable/ic_notification', // Custom notification icon
+                color: '#3717ce' // Notification color
               }
             }
           };
@@ -351,155 +356,298 @@ module.exports = {
     }
   },
 
-  // Mark task as completed
-  completeTask: async (req, res) => {
-    try {
-      const { chatId } = req.body;
+// completeTask function
+completeTask: async (req, res) => {
+  try {
+    const { chatId } = req.body;
+    const userId = await getAuthenticatedUserId(req);
 
-      // Fetch the authenticated user's ID
-      const userId = await getAuthenticatedUserId(req);
-
-      if (!userId) {
-        console.error('Authenticated user ID is missing.');
-        return res.status(401).json({ error: 'User authentication required.' });
-      }
-
-      // Validate input
-      if (!chatId) {
-        return res.status(400).json({ error: 'Chat ID is required.' });
-      }
-
-      // Find the chat
-      const chat = await Chat.findByPk(chatId);
-
-      if (!chat) {
-        return res.status(404).json({ error: 'Chat not found.' });
-      }
-
-      // Find the associated task
-      const task = await Task.findByPk(chat.taskId);
-
-      if (!task || task.status !== 'active') {
-        return res.status(400).json({ error: 'Task not found or not active.' });
-      }
-
-      // Ensure that the requester is marking the task as completed
-      if (task.userId !== userId) {
-        return res.status(403).json({ error: 'Only the task requester can mark the task as completed.' });
-      }
-
-      // Update the task and chat statuses to 'completed'
-      task.status = 'completed';
-      chat.status = 'completed';
-
-      await task.save();
-      await chat.save();
-
-      // Create a new notification for the completed task
-      await Notification.create({
-        taskId: task.id,
-        userId: chat.taskerId, // Notify the tasker about the completion
-        message: 'task completed',
-        type: 'activity', // Custom type to identify completed task notifications
-      });
-
-      res.status(200).json({ message: 'Task marked as completed successfully.' });
-    } catch (error) {
-      console.error('Error marking task as completed:', error.message || error);
-      res.status(500).json({ error: 'Failed to mark task as completed.' });
+    if (!userId) {
+      console.error('Authenticated user ID is missing.');
+      return res.status(401).json({ error: 'User authentication required.' });
     }
-  },
 
-
-  cancelTask: async (req, res) => {
-    try {
-      const { chatId, reason } = req.body;
-      const userId = await getAuthenticatedUserId(req);
-  
-      if (!chatId) {
-        return res.status(400).json({ error: 'Chat ID is required.' });
-      }
-  
-      const chat = await Chat.findByPk(chatId);
-      if (!chat) {
-        return res.status(404).json({ error: 'Chat not found.' });
-      }
-  
-      const task = await Task.findByPk(chat.taskId, {
-        include: [{ model: Offer, as: 'offers' }],
-      });
-  
-      if (!task) {
-        return res.status(400).json({ error: 'Task not found or not active.' });
-      }
-  
-      const isRequester = task.userId === userId;
-      const isTasker = task.taskerAcceptedId === userId;
-  
-      if (!isRequester && !isTasker) {
-        return res.status(403).json({ error: 'You are not authorized to cancel this task.' });
-      }
-
-      let otherUser;
-      if (isRequester) {
-        otherUser = task.taskerAcceptedId; // Tasker's ID before it's nullified
-        if (!otherUser) {
-          return res.status(400).json({ error: 'No tasker associated with this task.' });
-        }
-      } else {
-        otherUser = task.userId; // Requester's ID
-      }
-  
-      await Cancellation.create({
-        taskId: task.id,
-        canceledByUserId: userId,
-        canceledByRole: isRequester ? 'requester' : 'tasker',
-        reason: reason || null,
-      });
-  
-      if (isTasker) {
-        const tasker = await User.findByPk(userId);
-        if (tasker) {
-          tasker.canceledTasks = tasker.canceledTasks ? tasker.canceledTasks + 1 : 1;
-          await tasker.save();
-        }
-      }
-
-      await Notification.create({
-        taskId: task.id,
-        userId: otherUser, // Use the correct tasker ID here
-        message: "task cancelled",
-        type: 'activity',
-     });  
-  
-      await Offer.update(
-        { status: 'pending' },
-        { where: { taskId: task.id, status: { [Op.ne]: 'cancelled' } } }
-      );
-  
-      const acceptedOffer = task.offers.find(offer => offer.taskerId === task.taskerAcceptedId);
-      if (acceptedOffer) {
-        acceptedOffer.status = 'cancelled';
-        await acceptedOffer.save();
-      }
-  
-      // Reset chatId to null when the task is canceled
-      task.status = 'offered';
-      task.taskerAcceptedId = null;
-      task.chatId = null;
-      await task.save();
-  
-      chat.status = 'pending';
-      await chat.save();
-
-  
-      res.status(200).json({ message: 'Task has been canceled and reverted to offered status.' });
-    } catch (error) {
-      console.error('Error canceling task:', error);
-      res.status(500).json({ error: 'Failed to cancel the task.' });
+    if (!chatId) {
+      return res.status(400).json({ error: 'Chat ID is required.' });
     }
-  },
-  
+
+    // Find chat and include necessary relations
+    const chat = await Chat.findOne({
+      where: { id: chatId },
+      include: [
+        {
+          model: User,
+          as: 'tasker',
+          attributes: ['id', 'firstName', 'lastName', 'fcmToken']
+        }
+      ]
+    });
+
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found.' });
+    }
+
+    // Find task with requester details
+    const task = await Task.findOne({
+      where: { id: chat.taskId },
+      include: [
+        {
+          model: User,
+          as: 'requester',
+          attributes: ['id', 'firstName', 'lastName']
+        }
+      ]
+    });
+
+    if (!task || task.status !== 'active') {
+      return res.status(400).json({ error: 'Task not found or not active.' });
+    }
+
+    if (task.userId !== userId) {
+      return res.status(403).json({ error: 'Only the task requester can mark the task as completed.' });
+    }
+
+    // Update statuses
+    task.status = 'completed';
+    chat.status = 'completed';
+    await task.save();
+    await chat.save();
+
+    // Create in-app notification
+    await Notification.create({
+      taskId: task.id,
+      userId: chat.taskerId,
+      message: 'task completed',
+      type: 'activity',
+    });
+
+    // Send push notification to tasker
+    if (chat.tasker?.fcmToken) {
+      try {
+        const notificationMessage = {
+          token: chat.tasker.fcmToken,
+          notification: {
+            title: 'Task Completed',
+            body: `Task "${task.title}" has been marked as completed`
+          },
+          data: {
+            type: 'activity',
+            taskId: task.id.toString(),
+            chatId: chatId.toString(),
+            messageType: 'task completed',
+            click_action: 'FLUTTER_NOTIFICATION_CLICK'
+          },
+          android: {
+            priority: 'high',
+            notification: {
+              channelId: 'default',
+              priority: 'high',
+              defaultVibrateTimings: true,
+              icon: '@drawable/ic_notification',
+              color: '#3717ce'
+            }
+          },
+          apns: {
+            payload: {
+              aps: {
+                alert: {
+                  title: 'Task Completed',
+                  body: `Task "${task.title}" has been marked as completed`
+                },
+                sound: 'default',
+                badge: 1,
+                'content-available': 1
+              }
+            },
+            headers: {
+              'apns-priority': '10',
+              'apns-push-type': 'alert'
+            }
+          }
+        };
+
+        const response = await admin.messaging().send(notificationMessage);
+        console.log('Push notification sent for task completion:', response);
+      } catch (error) {
+        console.error('Error sending push notification:', error);
+      }
+    }
+
+    res.status(200).json({ message: 'Task marked as completed successfully.' });
+  } catch (error) {
+    console.error('Error marking task as completed:', error.message || error);
+    res.status(500).json({ error: 'Failed to mark task as completed.' });
+  }
+},
+
+// cancelTask function
+cancelTask: async (req, res) => {
+  try {
+    const { chatId, reason } = req.body;
+    const userId = await getAuthenticatedUserId(req);
+
+    if (!chatId) {
+      return res.status(400).json({ error: 'Chat ID is required.' });
+    }
+
+    // Find chat with user details
+    const chat = await Chat.findOne({
+      where: { id: chatId },
+      include: [
+        {
+          model: User,
+          as: 'requester',
+          attributes: ['id', 'firstName', 'lastName', 'fcmToken']
+        },
+        {
+          model: User,
+          as: 'tasker',
+          attributes: ['id', 'firstName', 'lastName', 'fcmToken']
+        }
+      ]
+    });
+
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found.' });
+    }
+
+    const task = await Task.findOne({
+      where: { id: chat.taskId },
+      include: [
+        { model: Offer, as: 'offers' },
+        {
+          model: User,
+          as: 'requester',
+          attributes: ['id', 'firstName', 'lastName']
+        }
+      ]
+    });
+
+    if (!task) {
+      return res.status(400).json({ error: 'Task not found or not active.' });
+    }
+
+    const isRequester = task.userId === userId;
+    const isTasker = task.taskerAcceptedId === userId;
+
+    if (!isRequester && !isTasker) {
+      return res.status(403).json({ error: 'You are not authorized to cancel this task.' });
+    }
+
+    // Determine recipient for notification
+    let recipient;
+    let cancelerName;
+    if (isRequester) {
+      recipient = chat.tasker;
+      cancelerName = chat.requester.firstName;
+    } else {
+      recipient = chat.requester;
+      cancelerName = chat.tasker.firstName;
+    }
+
+    // Create cancellation record
+    await Cancellation.create({
+      taskId: task.id,
+      canceledByUserId: userId,
+      canceledByRole: isRequester ? 'requester' : 'tasker',
+      reason: reason || null,
+    });
+
+    // Update tasker cancellation count if applicable
+    if (isTasker) {
+      const tasker = await User.findByPk(userId);
+      if (tasker) {
+        tasker.canceledTasks = tasker.canceledTasks ? tasker.canceledTasks + 1 : 1;
+        await tasker.save();
+      }
+    }
+
+    // Create in-app notification
+    await Notification.create({
+      taskId: task.id,
+      userId: recipient.id,
+      message: "task cancelled",
+      type: 'activity',
+    });
+
+    // Send push notification
+    if (recipient.fcmToken) {
+      try {
+        const notificationMessage = {
+          token: recipient.fcmToken,
+          notification: {
+            title: 'Task Cancelled',
+            body: `${cancelerName} has cancelled task "${task.title}"${reason ? `: ${reason}` : ''}`
+          },
+          data: {
+            type: 'activity',
+            taskId: task.id.toString(),
+            chatId: chatId.toString(),
+            messageType: 'task cancelled',
+            click_action: 'FLUTTER_NOTIFICATION_CLICK'
+          },
+          android: {
+            priority: 'high',
+            notification: {
+              channelId: 'default',
+              priority: 'high',
+              defaultVibrateTimings: true,
+              icon: '@drawable/ic_notification',
+              color: '#3717ce'
+            }
+          },
+          apns: {
+            payload: {
+              aps: {
+                alert: {
+                  title: 'Task Cancelled',
+                  body: `${cancelerName} has cancelled task "${task.title}"${reason ? `: ${reason}` : ''}`
+                },
+                sound: 'default',
+                badge: 1,
+                'content-available': 1
+              }
+            },
+            headers: {
+              'apns-priority': '10',
+              'apns-push-type': 'alert'
+            }
+          }
+        };
+
+        const response = await admin.messaging().send(notificationMessage);
+        console.log('Push notification sent for task cancellation:', response);
+      } catch (error) {
+        console.error('Error sending push notification:', error);
+      }
+    }
+
+    // Update offers and task status
+    await Offer.update(
+      { status: 'pending' },
+      { where: { taskId: task.id, status: { [Op.ne]: 'cancelled' } } }
+    );
+
+    const acceptedOffer = task.offers.find(offer => offer.taskerId === task.taskerAcceptedId);
+    if (acceptedOffer) {
+      acceptedOffer.status = 'cancelled';
+      await acceptedOffer.save();
+    }
+
+    task.status = 'offered';
+    task.taskerAcceptedId = null;
+    task.chatId = null;
+    await task.save();
+
+    chat.status = 'pending';
+    await chat.save();
+
+    res.status(200).json({ message: 'Task has been canceled and reverted to offered status.' });
+  } catch (error) {
+    console.error('Error canceling task:', error);
+    res.status(500).json({ error: 'Failed to cancel the task.' });
+  }
+},
 
 
 };

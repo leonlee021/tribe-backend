@@ -1,14 +1,13 @@
 // scripts/testNotifications.js
 require('dotenv').config();
 const admin = require('../firebaseAdmin');
-const { User, Chat, Message, sequelize } = require('../models');
+const { User, sequelize } = require('../models');
 
 async function testNotifications(userEmail) {
   try {
     await sequelize.authenticate();
     console.log('Database connection established successfully.');
 
-    // 1. Test FCM Token Retrieval
     const user = await User.findOne({ 
       where: { email: userEmail },
       attributes: ['id', 'email', 'fcmToken', 'firstName', 'lastName']
@@ -19,152 +18,117 @@ async function testNotifications(userEmail) {
       return;
     }
 
-    console.log('Test 1: User FCM Token Check');
-    console.log('User:', user.email);
-    console.log('FCM Token:', user.fcmToken);
-    console.log('Token length:', user.fcmToken?.length);
-    console.log('-------------------');
+    if (!user.fcmToken) {
+      console.log('No FCM token found for user');
+      return;
+    }
 
-    // 2. Test Different Message Types
+    console.log('Testing notifications for user:', {
+      email: user.email,
+      fcmToken: user.fcmToken,
+      tokenLength: user.fcmToken?.length
+    });
+
+    // Test messages
     const testMessages = [
       {
         title: 'Test Chat Message',
-        body: 'Short message test',
+        body: 'This is a test chat message',
         type: 'chat',
         chatId: '123',
         taskId: '456'
       },
       {
-        title: 'Test Long Message',
-        body: 'This is a very long message that should be truncated when it appears in the notification. We want to make sure it handles long content properly and shows ellipsis when needed.',
-        type: 'chat',
-        chatId: '123',
-        taskId: '456'
-      },
-      {
-        title: 'Test Activity Update',
-        body: 'New activity on your task',
+        title: 'Test Activity',
+        body: 'This is a test activity notification',
         type: 'activity',
-        taskId: '456'
-      },
-      {
-        title: 'Test Special Characters',
-        body: 'Testing emoji 👋 and special characters: @#$%',
-        type: 'chat',
-        chatId: '123',
-        taskId: '456'
+        taskId: '789'
       }
     ];
 
     for (const [index, msg] of testMessages.entries()) {
       try {
-        console.log(`\nTest ${index + 2}: Sending "${msg.title}"`);
-        
-        // Base message structure
-        const baseMessage = {
+        console.log(`\nSending test message ${index + 1}:`, msg);
+
+        // Construct the message payload
+        const message = {
           token: user.fcmToken,
           notification: {
             title: msg.title,
-            body: msg.body.length > 100 ? `${msg.body.substring(0, 97)}...` : msg.body
+            body: msg.body
           },
           data: {
             type: msg.type,
-            chatId: msg.chatId,
-            taskId: msg.taskId,
-            click_action: 'FLUTTER_NOTIFICATION_CLICK'
-          }
-        };
-
-        // Try Android format first
-        const androidMessage = {
-          ...baseMessage,
+            chatId: msg.chatId?.toString() || '',
+            taskId: msg.taskId?.toString() || '',
+            messageId: `test-${Date.now()}-${index}`,
+            senderId: user.id.toString()
+          },
           android: {
             priority: 'high',
             notification: {
               channelId: 'default',
-              sound: 'default',
-              priority: 'high',
+              priority: 'max',
+              defaultSound: true,
               defaultVibrateTimings: true
+            }
+          },
+          apns: {
+            payload: {
+              aps: {
+                alert: {
+                  title: msg.title,
+                  body: msg.body
+                },
+                sound: 'default',
+                badge: 1,
+                'content-available': 1
+              }
+            },
+            headers: {
+              'apns-priority': '10',
+              'apns-push-type': 'alert'
             }
           }
         };
 
-        try {
-          console.log('Attempting Android format...');
-          const response = await admin.messaging().send(androidMessage);
-          console.log('Android notification sent:', response);
-        } catch (androidError) {
-          console.log('Android format failed, trying iOS format...');
-          
-          // iOS format as fallback
-          const iosMessage = {
-            ...baseMessage,
-            apns: {
-              headers: {
-                'apns-priority': '10',
-                'apns-push-type': 'alert'
-              },
-              payload: {
-                aps: {
-                  alert: {
-                    title: msg.title,
-                    body: msg.body.length > 100 ? `${msg.body.substring(0, 97)}...` : msg.body
-                  },
-                  sound: 'default',
-                  badge: 1,
-                  'content-available': 1
-                },
-                ...baseMessage.data
-              }
-            }
-          };
+        console.log('Sending message with payload:', JSON.stringify(message, null, 2));
+        const response = await admin.messaging().send(message);
+        console.log('Message sent successfully:', response);
 
-          const response = await admin.messaging().send(iosMessage);
-          console.log('iOS notification sent:', response);
-        }
+        // Create notification in database
+        const notification = {
+          userId: user.id,
+          type: msg.type,
+          chatId: msg.chatId,
+          taskId: msg.taskId,
+          message: msg.title,
+          isRead: false
+        };
+        
+        console.log('Creating notification in database:', notification);
+        // Add code here to create notification in your database if needed
 
-        // Wait between notifications
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Wait between messages
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
       } catch (error) {
-        console.error(`Failed to send test ${index + 2}:`, {
-          code: error.code,
-          message: error.message,
-          details: error.errorInfo
-        });
-      }
-    }
-
-    // 3. Test Error Cases
-    console.log('\nTest 6: Invalid Token Test');
-    try {
-      await admin.messaging().send({
-        token: 'invalid_token',
-        notification: {
-          title: 'Invalid Token Test',
-          body: 'This should fail'
+        console.error('Error sending message:', error.code, error.message);
+        if (error.errorInfo) {
+          console.error('Error info:', error.errorInfo);
         }
-      });
-    } catch (error) {
-      console.log('Expected error received:', error.message);
-    }
-
-    console.log('\nTest 7: Debug Info');
-    console.log('Platform detection from token length:');
-    if (user.fcmToken?.length > 140) {
-      console.log('Likely iOS token');
-    } else {
-      console.log('Likely Android token');
+      }
     }
 
   } catch (error) {
     console.error('Error in test script:', error);
   } finally {
     await sequelize.close();
+    console.log('Test completed');
   }
 }
 
-// Run the script
+// Run the script with more error handling
 const email = process.argv[2];
 if (!email) {
   console.error('Please provide an email address');
@@ -172,10 +136,10 @@ if (!email) {
   process.exit(1);
 }
 
-console.log('Starting notification tests for:', email);
+console.log('Starting notification test for:', email);
 testNotifications(email)
   .then(() => {
-    console.log('All tests completed');
+    console.log('Test script completed successfully');
     process.exit(0);
   })
   .catch(error => {
