@@ -29,7 +29,6 @@ app.use('/uploads', express.static('uploads'));
 app.use('/users', userRoutes);
 app.use('/tasks', taskRoutes);
 app.use('/chats', chatRoutes);
-app.use('/auth', authRoutes); 
 app.use('/reviews', reviewRoutes);
 app.use('/payment', paymentRoutes);
 app.use('/offers', offerRoutes);
