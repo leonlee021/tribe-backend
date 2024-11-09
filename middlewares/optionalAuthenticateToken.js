@@ -6,26 +6,22 @@ const { User } = require('../models');
 const optionalAuthenticateToken = async (req, res, next) => {
     const authHeader = req.header('Authorization');
     if (!authHeader) {
-        return next(); // Proceed without setting req.user
+        // Continue without authentication
+        next();
+        return;
     }
 
-    const token = authHeader.replace('Bearer ', '');
+    const token = authHeader.replace('Bearer ', '').trim();
     if (!token) {
         return next(); // Proceed without setting req.user
     }
 
     try {
         const decodedToken = await admin.auth().verifyIdToken(token);
-        const firebaseUid = decodedToken.uid || decodedToken.sub || decodedToken.user_id;
-
-        if (!firebaseUid) {
-            return next(); // Proceed without setting req.user
-        }
-
-        const user = await User.findOne({ where: { firebaseUid } });
-        if (user) {
-            req.user = user;
-        }
+        req.user = { 
+            uid: decodedToken.uid, 
+            email: decodedToken.email 
+        };
     } catch (err) {
         console.warn('Optional authentication failed:', err);
         // Proceed as guest

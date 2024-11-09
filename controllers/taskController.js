@@ -6,27 +6,6 @@ const getAuthenticatedUserId = require('../utils/getAuthenticatedUserId');
 const s3 = require('../awsConfig'); // AWS S3 instance
 const { v4: uuidv4 } = require('uuid'); // For unique filenames
 
-
-// Create a new task
-// Create a new task
-
-// const multer = require('multer');
-// const path = require('path');
-
-// // Set up storage for task photos
-// const taskPhotoStorage = multer.diskStorage({
-//   destination: function (req, file, cb) {
-//     cb(null, 'uploads/task_photos/'); // Ensure this directory exists
-//   },
-//   filename: function (req, file, cb) {
-//     cb(null, Date.now() + '-' + file.originalname);
-//   },
-// });
-
-// // Create the multer instance for task photos
-// const uploadTaskPhotos = multer({ storage: taskPhotoStorage });
-// exports.uploadTaskPhotos = uploadTaskPhotos;
-
 exports.createTask = async (req, res) => {
     try {
         const { taskName, postContent, locationDependent, location, price, taskerUsername } = req.body;
@@ -294,7 +273,13 @@ exports.getTasksByHelper = async (req, res) => {
 exports.getAllTasks = async (req, res) => {
     try {
         // Fetch the authenticated user ID
-        const userId = await getAuthenticatedUserId(req);
+        let userId = null;
+        try {
+            userId = await getAuthenticatedUserId(req);
+        } catch (error) {
+            // Continue without user ID
+            console.log('No authenticated user, continuing with public access');
+        }
 
         // Fetch all tasks with related data
         const tasks = await Task.findAll({
