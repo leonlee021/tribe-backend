@@ -4,7 +4,6 @@ const cors = require('cors');
 const userRoutes = require('./routes/userRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const chatRoutes = require('./routes/chatRoutes');
-const authRoutes = require('./routes/authRoutes'); 
 const reviewRoutes = require('./routes/reviewRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const offerRoutes = require('./routes/offerRoutes');
