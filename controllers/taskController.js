@@ -87,7 +87,7 @@ exports.getTasksByUser = async (req, res) => {
             include: [
                 {
                     model: User,
-                    as: 'user',
+                    as: 'requester',
                     attributes: ['id', 'firstName', 'lastName', 'profilePhotoUrl'],
                 },
                 {
@@ -190,7 +190,7 @@ exports.getTasksByHelper = async (req, res) => {
             include: [
                 {
                     model: User,
-                    as: 'user',
+                    as: 'requester',
                     attributes: ['id', 'firstName', 'lastName', 'profilePhotoUrl'],
                 },
                 {
@@ -286,7 +286,7 @@ exports.getAllTasks = async (req, res) => {
             include: [
                 {
                     model: User,
-                    as: 'user',
+                    as: 'requester',
                     attributes: ['id', 'firstName', 'lastName', 'profilePhotoUrl'],
                 },
                 {
@@ -346,10 +346,10 @@ exports.getAllTasks = async (req, res) => {
 
                 // Generate a pre-signed URL for the profile photo of the task owner
                 let userProfilePhotoUrl = null;
-                if (task.user?.profilePhotoUrl) {
+                if (task.requester?.profilePhotoUrl) {
                     userProfilePhotoUrl = s3.getSignedUrl('getObject', {
                         Bucket: process.env.S3_BUCKET_NAME,
-                        Key: task.user.profilePhotoUrl,
+                        Key: task.requester.profilePhotoUrl,
                         Expires: 60 * 60 * 24, // 24 hours
                     });
                 }
@@ -378,8 +378,8 @@ exports.getAllTasks = async (req, res) => {
                     appliedByCount,
                     userHasApplied,
                     photos: signedPhotoUrls, // Replace object keys with pre-signed URLs
-                    user: {
-                        ...task.user.toJSON(),
+                    requester: {
+                        ...task.requester.toJSON(),
                         profilePhotoUrl: userProfilePhotoUrl, // Updated profile photo URL for the task owner
                     },
                     offers: offersWithSignedUrls, // Updated offers with tasker profile photos
@@ -410,7 +410,7 @@ exports.getTaskById = async (req, res) => {
             include: [
                 {
                     model: User,
-                    as: 'user',
+                    as: 'requester',
                     attributes: ['firstName', 'lastName', 'profilePhotoUrl'],
                 },
                 {
@@ -663,7 +663,7 @@ exports.getHiddenTasks = async (req, res) => {
             include: [
                 {
                     model: User,
-                    as: 'user',
+                    as: 'requester',
                     attributes: ['id', 'firstName', 'lastName', 'profilePhotoUrl'],
                 },
                 {
