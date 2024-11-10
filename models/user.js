@@ -9,7 +9,12 @@ module.exports = (sequelize, DataTypes) => {
     static associate(models) {
       User.hasMany(models.Task, {
         foreignKey: 'userId',
-        as: 'tasks',
+        as: 'requestedTasks',  // Changed from 'tasks' to be more specific
+        onDelete: 'CASCADE',
+      });
+      User.hasMany(models.Task, {
+        foreignKey: 'taskerAcceptedId',
+        as: 'assignedTasks',
         onDelete: 'CASCADE',
       });
       User.hasMany(models.Chat, { as: 'requestedChats', foreignKey: 'requesterId' });

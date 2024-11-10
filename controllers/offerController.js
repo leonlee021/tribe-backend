@@ -140,7 +140,6 @@ module.exports = {
   },
 
   // Accept an offer (only task owner can accept)
-// controllers/offerController.js
 acceptOffer: async (req, res) => {
   try {
     const { offerId } = req.params;

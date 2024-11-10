@@ -6,7 +6,7 @@ module.exports = (sequelize, DataTypes) => {
     static associate(models) {
       Task.belongsTo(models.User, {
         foreignKey: 'userId',
-        as: 'user',
+        as: 'requester',
         onDelete: 'CASCADE',
       });
       Task.belongsTo(models.User, {
