@@ -295,6 +295,7 @@ exports.deleteUserAccount = async (req, res) => {
 // Delete Account and Hide User's Tasks
 exports.deleteAccount = async (req, res) => {
     try {
+        // Fetch the authenticated user's ID
         const userId = await getAuthenticatedUserId(req);
 
         if (!userId) {
@@ -302,10 +303,11 @@ exports.deleteAccount = async (req, res) => {
             return res.status(401).json({ error: 'User authentication required.' });
         }
 
+        // Start a transaction
         const transaction = await sequelize.transaction();
 
         try {
-            // Find the user to get their Firebase UID
+            // Find the user first
             const user = await User.findByPk(userId, { transaction });
             
             if (!user) {
@@ -313,35 +315,46 @@ exports.deleteAccount = async (req, res) => {
                 return res.status(404).json({ error: 'User not found.' });
             }
 
-            // Delete the user from Firebase if firebaseUid exists
+            // Find all tasks created by the user
+            const tasks = await Task.findAll({ where: { userId }, transaction });
+
+            // Prepare TaskHide entries to hide all tasks created by the user
+            const hideEntries = tasks.map(task => ({
+                taskId: task.id,
+                userId: userId,
+            }));
+
+            if (hideEntries.length > 0) {
+                await TaskHide.bulkCreate(hideEntries, { transaction });
+            }
+
+            // If user has a Firebase account, delete it
             if (user.firebaseUid) {
                 try {
                     await admin.auth().deleteUser(user.firebaseUid);
                 } catch (firebaseError) {
                     console.error('Firebase user deletion error:', firebaseError);
-                    // If the Firebase user doesn't exist, we can continue
-                    // If it's a different error, we should probably stop
+                    // Continue if user doesn't exist in Firebase
                     if (firebaseError.code !== 'auth/user-not-found') {
                         throw firebaseError;
                     }
                 }
             }
 
-            // Update the user record with anonymized data
+            // Instead of deleting, update the user record
             await User.update(
                 {
                     email: null,
                     name: 'Deleted User',
-                    firebaseUid: null, // Clear Firebase UID
+                    firebaseUid: null,
                     isDeleted: true,
                     deletedAt: new Date(),
-                    // Clear any other personal information
+                    // Clear any other personal information you might have
                     phoneNumber: null,
                     profilePicture: null,
                     // If you store Firebase tokens, clear them
                     firebaseToken: null,
                     refreshToken: null,
-                    updatedAt: new Date()
                 },
                 {
                     where: { id: userId },
@@ -349,26 +362,7 @@ exports.deleteAccount = async (req, res) => {
                 }
             );
 
-            // If you have a sessions table, clear sessions
-            if (typeof Session !== 'undefined') {
-                await Session.destroy({
-                    where: { userId },
-                    transaction
-                });
-            }
-
-            // Optional: Log the deletion
-            if (typeof AuditLog !== 'undefined') {
-                await AuditLog.create({
-                    userId,
-                    action: 'ACCOUNT_DELETED',
-                    details: {
-                        timestamp: new Date(),
-                        previousEmail: user.email
-                    }
-                }, { transaction });
-            }
-
+            // Commit the transaction
             await transaction.commit();
 
             // Clear any session cookies
@@ -379,6 +373,7 @@ exports.deleteAccount = async (req, res) => {
 
             res.status(200).json({ message: 'Account deleted successfully' });
         } catch (error) {
+            // Rollback the transaction on error
             await transaction.rollback();
             console.error('Transaction error while deleting account:', error);
             res.status(500).json({ error: 'Failed to delete account due to a server error.' });
