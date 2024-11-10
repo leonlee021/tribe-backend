@@ -72,7 +72,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     email: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       unique: true,
       validate: {
         isEmail: {
@@ -120,7 +120,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     firebaseUid: {  // Add Firebase UID to link with Firebase Auth
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
       unique: true,
     },
     pushToken: {
@@ -137,9 +137,19 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: 'ios'
     },
+    isDeleted: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false
+    },
+    deletedAt: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
   }, {
     sequelize,
     modelName: 'User',
+    timestamps: true,
     hooks: {
       beforeCreate: async (user) => {
         if (user.password) {

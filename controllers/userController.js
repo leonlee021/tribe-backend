@@ -295,7 +295,6 @@ exports.deleteUserAccount = async (req, res) => {
 // Delete Account and Hide User's Tasks
 exports.deleteAccount = async (req, res) => {
     try {
-        // Fetch the authenticated user's ID
         const userId = await getAuthenticatedUserId(req);
 
         if (!userId) {
@@ -303,43 +302,83 @@ exports.deleteAccount = async (req, res) => {
             return res.status(401).json({ error: 'User authentication required.' });
         }
 
-        // Start a transaction
         const transaction = await sequelize.transaction();
 
         try {
-            // Find all tasks created by the user
-            const tasks = await Task.findAll({ where: { userId }, transaction });
-
-            // Prepare TaskHide entries to hide all tasks created by the user
-            const hideEntries = tasks.map(task => ({
-                taskId: task.id,
-                userId: userId,
-            }));
-
-            if (hideEntries.length > 0) {
-                await TaskHide.bulkCreate(hideEntries, { transaction });
+            // Find the user to get their Firebase UID
+            const user = await User.findByPk(userId, { transaction });
+            
+            if (!user) {
+                await transaction.rollback();
+                return res.status(404).json({ error: 'User not found.' });
             }
 
-            // Optionally, handle hiding tasks where the user is a tasker if needed
-            // Example:
-            // const taskerTasks = await Task.findAll({ where: { taskerAcceptedId: userId }, transaction });
-            // const taskerHideEntries = taskerTasks.map(task => ({
-            //     taskId: task.id,
-            //     userId: userId,
-            // }));
-            // if (taskerHideEntries.length > 0) {
-            //     await TaskHide.bulkCreate(taskerHideEntries, { transaction });
-            // }
+            // Delete the user from Firebase if firebaseUid exists
+            if (user.firebaseUid) {
+                try {
+                    await admin.auth().deleteUser(user.firebaseUid);
+                } catch (firebaseError) {
+                    console.error('Firebase user deletion error:', firebaseError);
+                    // If the Firebase user doesn't exist, we can continue
+                    // If it's a different error, we should probably stop
+                    if (firebaseError.code !== 'auth/user-not-found') {
+                        throw firebaseError;
+                    }
+                }
+            }
 
-            // Delete the user
-            await User.destroy({ where: { id: userId }, transaction });
+            // Update the user record with anonymized data
+            await User.update(
+                {
+                    email: null,
+                    name: 'Deleted User',
+                    firebaseUid: null, // Clear Firebase UID
+                    isDeleted: true,
+                    deletedAt: new Date(),
+                    // Clear any other personal information
+                    phoneNumber: null,
+                    profilePicture: null,
+                    // If you store Firebase tokens, clear them
+                    firebaseToken: null,
+                    refreshToken: null,
+                    updatedAt: new Date()
+                },
+                {
+                    where: { id: userId },
+                    transaction
+                }
+            );
 
-            // Commit the transaction
+            // If you have a sessions table, clear sessions
+            if (typeof Session !== 'undefined') {
+                await Session.destroy({
+                    where: { userId },
+                    transaction
+                });
+            }
+
+            // Optional: Log the deletion
+            if (typeof AuditLog !== 'undefined') {
+                await AuditLog.create({
+                    userId,
+                    action: 'ACCOUNT_DELETED',
+                    details: {
+                        timestamp: new Date(),
+                        previousEmail: user.email
+                    }
+                }, { transaction });
+            }
+
             await transaction.commit();
+
+            // Clear any session cookies
+            if (req.session) {
+                req.session.destroy();
+            }
+            res.clearCookie('jwt'); // Adjust based on your auth setup
 
             res.status(200).json({ message: 'Account deleted successfully' });
         } catch (error) {
-            // Rollback the transaction on error
             await transaction.rollback();
             console.error('Transaction error while deleting account:', error);
             res.status(500).json({ error: 'Failed to delete account due to a server error.' });
