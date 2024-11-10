@@ -1,6 +1,26 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const admin = require('firebase-admin');
+const path = require('path');
+
+
+// Initialize Firebase Admin SDK
+try {
+  const serviceAccount = require('./mutually-39428-firebase-adminsdk-eueyz-bdf692c84f.json');
+  
+  if (!admin.apps.length) {
+      admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+          projectId: 'mutually-39428'
+      });
+      console.log('Firebase Admin SDK initialized successfully');
+  }
+} catch (error) {
+  console.error('Error initializing Firebase Admin SDK:', error);
+}
+
+
 const userRoutes = require('./routes/userRoutes');
 const taskRoutes = require('./routes/taskRoutes');
 const chatRoutes = require('./routes/chatRoutes');
@@ -19,7 +39,6 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true,
 }));
-
 
 app.use(express.json());
 
