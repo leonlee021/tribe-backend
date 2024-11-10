@@ -269,28 +269,28 @@ exports.uploadProfilePhoto = async (req, res) => {
 
 
 // Delete Authenticated User Account
-exports.deleteUserAccount = async (req, res) => {
-    try {
-        // Fetch the authenticated user's ID
-        const userId = await getAuthenticatedUserId(req);
+// exports.deleteUserAccount = async (req, res) => {
+//     try {
+//         // Fetch the authenticated user's ID
+//         const userId = await getAuthenticatedUserId(req);
 
-        if (!userId) {
-            console.error('Authenticated user ID is missing.');
-            return res.status(401).json({ error: 'User authentication required.' });
-        }
+//         if (!userId) {
+//             console.error('Authenticated user ID is missing.');
+//             return res.status(401).json({ error: 'User authentication required.' });
+//         }
 
-        const user = await User.findByPk(userId);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
+//         const user = await User.findByPk(userId);
+//         if (!user) {
+//             return res.status(404).json({ error: 'User not found' });
+//         }
 
-        await user.destroy();
-        res.status(200).json({ message: 'User account deleted successfully' });
-    } catch (error) {
-        console.error('Error deleting account:', error);
-        res.status(500).json({ error: 'Unable to delete account' });
-    }
-};
+//         await user.destroy();
+//         res.status(200).json({ message: 'User account deleted successfully' });
+//     } catch (error) {
+//         console.error('Error deleting account:', error);
+//         res.status(500).json({ error: 'Unable to delete account' });
+//     }
+// };
 
 // Delete Account and Hide User's Tasks
 exports.deleteAccount = async (req, res) => {

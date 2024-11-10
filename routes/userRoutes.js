@@ -12,7 +12,7 @@ router.get('/profile', authenticateToken, userController.getUserProfile);
 router.put('/profile', authenticateToken, userController.updateUserProfile);
 router.get('/:userId', authenticateToken, userController.getUserProfileById);
 router.post('/profile-photo', authenticateToken, uploadProfilePhoto.single('profilePhoto'), userController.uploadProfilePhoto);
-router.delete('/delete-account', authenticateToken, userController.deleteUserAccount);
+router.delete('/delete-account', authenticateToken, userController.deleteAccount);
 router.post('/push-token', authenticateToken, userController.updatePushToken);
 
 module.exports = router;
