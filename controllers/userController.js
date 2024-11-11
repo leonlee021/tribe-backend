@@ -109,9 +109,10 @@ exports.getUserProfile = async (req, res) => {
         const userId = await getAuthenticatedUserId(req);
 
         if (!userId) {
-            return res.status(401).json({
-                success: false,
-                message: 'Please log in to continue'
+            return res.status(200).json({
+                success: true,
+                isGuest: true,
+                message: 'Guest user'
             });
         }
 
@@ -137,9 +138,12 @@ exports.getUserProfile = async (req, res) => {
             ],
         });
 
-        if (!userProfile) {
-            console.error('User profile not found:', userId);
-            return res.status(404).json({ error: 'User profile not found' });
+        if (!userProfile || userProfile.isDeleted) {
+            return res.status(200).json({
+                success: true,
+                isGuest: true,
+                message: 'User not found or deleted'
+            });
         }
 
         // Generate a pre-signed URL for the profile photo if it exists
