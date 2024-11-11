@@ -255,6 +255,8 @@ exports.updateUserProfile = async (req, res) => {
         }
 
         // Update fields if they are provided in the request
+        user.firstName = firstName !== undefined ? firstName : user.firstName;
+        user.lastName = lastName !== undefined ? lastName : user.lastName;
         user.about = about !== undefined ? about : user.about;
         user.location = location !== undefined ? location : user.location;
         user.experience = experience !== undefined ? experience : user.experience;
