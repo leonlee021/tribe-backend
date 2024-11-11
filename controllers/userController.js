@@ -109,8 +109,10 @@ exports.getUserProfile = async (req, res) => {
         const userId = await getAuthenticatedUserId(req);
 
         if (!userId) {
-            console.error('Authenticated user ID is missing.');
-            return res.status(401).json({ error: 'User authentication required.' });
+            return res.status(401).json({
+                success: false,
+                message: 'Please log in to continue'
+            });
         }
 
         const userProfile = await User.findOne({
