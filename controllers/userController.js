@@ -247,7 +247,7 @@ exports.updateUserProfile = async (req, res) => {
             return res.status(401).json({ error: 'User authentication required.' });
         }
 
-        const { about, location, experience, age, gender } = req.body;
+        const { firstName, lastName, about, location, experience, age, gender } = req.body;
         const user = await User.findByPk(userId);
 
         if (!user) {
