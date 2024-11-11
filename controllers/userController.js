@@ -53,7 +53,10 @@ exports.createOrUpdateUser = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
     try {
         const users = await User.findAll({
-            attributes: ['id', 'firstName', 'lastName', 'email', 'profilePhotoUrl'],
+            attributes: [
+                'id', 'firstName', 'lastName', 'email', 'profilePhotoUrl',
+                'isDeleted' // Add isDeleted to attributes
+            ],
             include: [
                 {
                     model: Review,
@@ -62,18 +65,43 @@ exports.getAllUsers = async (req, res) => {
                         {
                             model: User,
                             as: 'reviewer',
-                            attributes: ['firstName', 'lastName'],
+                            attributes: ['firstName', 'lastName', 'isDeleted'],
                         },
                     ],
                 },
             ],
         });
-        res.json(users);
+
+        // Map users to handle deleted status
+        const mappedUsers = users.map(user => {
+            if (user.isDeleted) {
+                return {
+                    id: user.id,
+                    firstName: 'Deleted',
+                    lastName: 'User',
+                    isDeleted: true,
+                    // Only include ratings if you want to preserve them
+                    averageRating: user.averageRating,
+                    ratingsCount: user.ratingsCount,
+                    reviewsReceived: user.reviewsReceived.map(review => ({
+                        ...review.toJSON(),
+                        reviewer: review.reviewer.isDeleted ? 
+                            { firstName: 'Deleted', lastName: 'User' } : 
+                            review.reviewer
+                    }))
+                };
+            }
+            return user;
+        });
+
+        res.json(mappedUsers);
     } catch (error) {
         console.error('Error fetching all users:', error);
         res.status(500).json({ message: error.message });
     }
 };
+
+
 
 // Get Authenticated User Profile
 exports.getUserProfile = async (req, res) => {
@@ -142,7 +170,7 @@ exports.getUserProfileById = async (req, res) => {
             attributes: [
                 'id', 'firstName', 'lastName', 'about', 'location', 
                 'experience', 'age', 'gender', 'averageRating', 'ratingsCount', 
-                'profilePhotoUrl'
+                'profilePhotoUrl', 'isDeleted' // Add isDeleted to attributes
             ],
             include: [
                 {
@@ -152,7 +180,7 @@ exports.getUserProfileById = async (req, res) => {
                         {
                             model: User,
                             as: 'reviewer',
-                            attributes: ['firstName', 'lastName'],
+                            attributes: ['firstName', 'lastName', 'isDeleted'],
                         },
                     ],
                 },
@@ -160,16 +188,35 @@ exports.getUserProfileById = async (req, res) => {
         });
 
         if (!user) {
-            console.error('User not found with ID:', userId);
             return res.status(404).json({ error: 'User not found' });
         }
 
-        // Generate a pre-signed URL for the profile photo if it exists
+        // If user is deleted, return limited information
+        if (user.isDeleted) {
+            return res.json({
+                id: user.id,
+                firstName: 'Deleted',
+                lastName: 'User',
+                isDeleted: true,
+                // Only include ratings if you want to preserve them
+                averageRating: user.averageRating,
+                ratingsCount: user.ratingsCount,
+                // Filter reviews to only show reviewer names as "Deleted User" if reviewer is deleted
+                reviewsReceived: user.reviewsReceived.map(review => ({
+                    ...review.toJSON(),
+                    reviewer: review.reviewer.isDeleted ? 
+                        { firstName: 'Deleted', lastName: 'User' } : 
+                        review.reviewer
+                }))
+            });
+        }
+
+        // For non-deleted users, generate profile photo URL
         if (user.profilePhotoUrl) {
             const photoUrl = s3.getSignedUrl('getObject', {
                 Bucket: process.env.S3_BUCKET_NAME,
                 Key: user.profilePhotoUrl,
-                Expires: 60 * 60 * 24, // 24 hours
+                Expires: 60 * 60 * 24,
             });
             user.profilePhotoUrl = photoUrl;
         }
@@ -180,6 +227,7 @@ exports.getUserProfileById = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
+
 
 
 // Update Authenticated User Profile
@@ -267,31 +315,6 @@ exports.uploadProfilePhoto = async (req, res) => {
     }
 };
 
-
-// Delete Authenticated User Account
-// exports.deleteUserAccount = async (req, res) => {
-//     try {
-//         // Fetch the authenticated user's ID
-//         const userId = await getAuthenticatedUserId(req);
-
-//         if (!userId) {
-//             console.error('Authenticated user ID is missing.');
-//             return res.status(401).json({ error: 'User authentication required.' });
-//         }
-
-//         const user = await User.findByPk(userId);
-//         if (!user) {
-//             return res.status(404).json({ error: 'User not found' });
-//         }
-
-//         await user.destroy();
-//         res.status(200).json({ message: 'User account deleted successfully' });
-//     } catch (error) {
-//         console.error('Error deleting account:', error);
-//         res.status(500).json({ error: 'Unable to delete account' });
-//     }
-// };
-
 // Delete Account and Hide User's Tasks
 exports.deleteAccount = async (req, res) => {
     try {
@@ -345,16 +368,19 @@ exports.deleteAccount = async (req, res) => {
             await User.update(
                 {
                     email: null,
-                    name: 'Deleted User',
+                    firstName: 'Deleted',
+                    lastName: 'User',
                     firebaseUid: null,
+                    about: null,
+                    location: null,
+                    experience: null,
+                    age: null,
+                    gender: null,
+                    profilePhotoUrl: null,
+                    pushToken: null,
+                    stripeCustomerId: null,
                     isDeleted: true,
                     deletedAt: new Date(),
-                    // Clear any other personal information you might have
-                    phoneNumber: null,
-                    profilePicture: null,
-                    // If you store Firebase tokens, clear them
-                    firebaseToken: null,
-                    refreshToken: null,
                 },
                 {
                     where: { id: userId },
