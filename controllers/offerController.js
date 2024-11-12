@@ -142,7 +142,7 @@ module.exports = {
   // Accept an offer (only task owner can accept)
 acceptOffer: async (req, res) => {
   try {
-    const { offerId } = req.params;
+    const offerId = req.params.offerId; 
     const userId = await getAuthenticatedUserId(req);
 
     if (!userId) {
