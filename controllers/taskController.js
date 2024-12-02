@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid'); // For unique filenames
 
 exports.createTask = async (req, res) => {
     try {
-        const { taskName, postContent, locationDependent, location, price, taskerUsername } = req.body;
+        const { taskName, postContent, locationDependent, location, latitude, longitude, price, taskerUsername } = req.body;
 
         // Validate taskName
         if (!taskName || taskName.trim().split(' ').length > 5) {
@@ -51,6 +51,8 @@ exports.createTask = async (req, res) => {
             postContent,
             locationDependent,
             location,
+            latitude: latitude ? parseFloat(latitude) : null,
+            longitude: longitude ? parseFloat(longitude) : null,
             price,
             taskerUsername,
             photos: photoKeys, // Store the array of photo URLs
