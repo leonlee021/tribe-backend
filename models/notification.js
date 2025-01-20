@@ -20,7 +20,7 @@ module.exports = (sequelize, DataTypes) => {
   Notification.init({
     taskId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
     },
     userId: {
       type: DataTypes.INTEGER,
