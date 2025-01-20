@@ -3,7 +3,7 @@ const admin = require('firebase-admin');
 const initializeFirebaseAdmin = () => {
   try {
     if (!admin.apps.length) {
-      const serviceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+      const serviceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_KEY_BASE64;
       if (!serviceAccountBase64) {
         throw new Error('FIREBASE_SERVICE_ACCOUNT_BASE64 not found in environment');
       }
