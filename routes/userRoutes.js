@@ -3,7 +3,7 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const authenticateToken = require('../middlewares/authenticateToken');
 const { uploadProfilePhoto } = require('../middlewares/upload');
-const admin = require('../firebaseAdmin');
+const admin = require('../config/firebaseAdmin');
 
 
 router.get('/', userController.getAllUsers);

@@ -1,4 +1,4 @@
-const admin = require('../firebaseAdmin.js');
+const admin = require('../config/firebaseAdmin.js');
 const { User, Notification } = require('../models');
 
 const sendPushNotification = async (fcmToken, title, body, data = {}) => {

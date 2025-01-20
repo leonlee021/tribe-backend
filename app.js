@@ -1,9 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const admin = require('firebase-admin');
 const path = require('path');
-const { initializeFirebaseAdmin } = require('firebaseAdmin');
+const { admin, initializeFirebaseAdmin } = require('./config/firebaseAdmin');
 
 initializeFirebaseAdmin();
 // Initialize Firebase Admin SDK

@@ -1,6 +1,6 @@
 // scripts/testFcmNotification.js
 require('dotenv').config();
-const admin = require('../firebaseAdmin');
+const admin = require('../config/firebaseAdmin');
 const { User, sequelize } = require('../models');
 
 async function sendTestNotification(userEmail) {

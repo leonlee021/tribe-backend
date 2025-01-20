@@ -1,6 +1,6 @@
 // middlewares/authenticateToken.js
 
-const admin = require('../firebaseAdmin'); // Ensure the path is correct
+const admin = require('../config/firebaseAdmin'); // Ensure the path is correct
 const { User } = require('../models'); // Import your User model
 
 const authenticateToken = async (req, res, next) => {

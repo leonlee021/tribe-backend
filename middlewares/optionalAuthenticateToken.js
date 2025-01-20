@@ -1,6 +1,6 @@
 // middlewares/optionalAuthenticateToken.js
 
-const admin = require('../firebaseAdmin');
+const admin = require('../config/firebaseAdmin');
 const { User } = require('../models');
 
 const optionalAuthenticateToken = async (req, res, next) => {

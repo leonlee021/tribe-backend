@@ -3,7 +3,7 @@
 const { Chat, Message, User, Task, Review, Cancellation, Offer, Notification } = require('../models');
 const { Op } = require('sequelize');
 const getAuthenticatedUserId = require('../utils/getAuthenticatedUserId'); // Import the utility function
-const admin = require('../firebaseAdmin');
+const admin = require('../config/firebaseAdmin');
 
 module.exports = {
   // Create a new chat

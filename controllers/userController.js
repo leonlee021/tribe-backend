@@ -3,7 +3,7 @@
 const { User, Review, TaskHide, Task, sequelize } = require('../models');  // Import sequelize
 const bcrypt = require('bcrypt');
 const path = require('path');
-const admin = require('../firebaseAdmin');
+const admin = require('../config/firebaseAdmin');
 const getAuthenticatedUserId = require('../utils/getAuthenticatedUserId'); // Import the utility function
 const s3 = require('../awsConfig'); // AWS S3 instance
 const { v4: uuidv4 } = require('uuid'); // For unique filenames
