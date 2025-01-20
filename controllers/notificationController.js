@@ -9,6 +9,8 @@ const notificationController = {
       const { fcmToken, platform } = req.body;
       const email = req.user.email;
 
+      console.log('🔍 DEBUG - Updating FCM Token:', { email, fcmToken, platform });
+
       if (!fcmToken) {
         return res.status(400).json({ error: 'FCM token is required' });
       }
