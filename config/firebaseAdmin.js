@@ -1,14 +1,19 @@
-
 const admin = require('firebase-admin');
-const path = require('path');
 
-// Initialize Firebase Admin SDK
 const initializeFirebaseAdmin = () => {
   try {
     if (!admin.apps.length) {
+      const serviceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+      if (!serviceAccountBase64) {
+        throw new Error('FIREBASE_SERVICE_ACCOUNT_BASE64 not found in environment');
+      }
+
+      const serviceAccount = JSON.parse(
+        Buffer.from(serviceAccountBase64, 'base64').toString('utf-8')
+      );
+
       admin.initializeApp({
-        credential: admin.credential.cert(path.join(__dirname, 'mutually-39428-firebase-adminsdk-eueyz-bdf692c84f.json')),
-        // If you have other config options like databaseURL, add them here
+        credential: admin.credential.cert(serviceAccount),
       });
       console.log('🟢 Firebase Admin initialized successfully');
     }
