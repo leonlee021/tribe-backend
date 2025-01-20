@@ -3,22 +3,23 @@ const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
 const path = require('path');
+const { initializeFirebaseAdmin } = require('firebaseAdmin');
 
-
+initializeFirebaseAdmin();
 // Initialize Firebase Admin SDK
-try {
-  const serviceAccount = require('./mutually-39428-firebase-adminsdk-eueyz-bdf692c84f.json');
+// try {
+//   const serviceAccount = require('./mutually-39428-firebase-adminsdk-eueyz-bdf692c84f.json');
   
-  if (!admin.apps.length) {
-      admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-          projectId: 'mutually-39428'
-      });
-      console.log('Firebase Admin SDK initialized successfully');
-  }
-} catch (error) {
-  console.error('Error initializing Firebase Admin SDK:', error);
-}
+//   if (!admin.apps.length) {
+//       admin.initializeApp({
+//           credential: admin.credential.cert(serviceAccount),
+//           projectId: 'mutually-39428'
+//       });
+//       console.log('Firebase Admin SDK initialized successfully');
+//   }
+// } catch (error) {
+//   console.error('Error initializing Firebase Admin SDK:', error);
+// }
 
 
 const userRoutes = require('./routes/userRoutes');

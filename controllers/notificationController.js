@@ -1,167 +1,143 @@
 // controllers/notificationController.js
 const { User, Notification } = require('../models');
+const { admin } = require('../config/firebaseAdmin');
 const getAuthenticatedUserId = require('../utils/getAuthenticatedUserId');
 
 const notificationController = {
-    updateFcmToken: async (req, res) => {
-        try {
-            const { fcmToken, platform } = req.body;
-            const email = req.user.email;
-
-            console.log('Updating FCM token:', {
-            email,
-            platform,
-            tokenLength: fcmToken?.length
-            });
-
-            if (!fcmToken) {
-            return res.status(400).json({ error: 'FCM token is required' });
-            }
-
-            const user = await User.findOne({ where: { email } });
-            if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-            }
-
-            // Update user with token and platform
-            await user.update({ 
-            fcmToken,
-            devicePlatform: platform // Make sure to add this field to your User model
-            });
-
-            console.log('Token updated for user:', {
-            userId: user.id,
-            platform,
-            tokenUpdated: true
-            });
-
-            res.json({ 
-            success: true, 
-            message: 'FCM token updated successfully'
-            });
-        } catch (error) {
-            console.error('Error updating FCM token:', error);
-            res.status(500).json({ error: 'Failed to update FCM token' });
-        }
-        },
-
-        sendNotification: async (userId, title, body, data = {}) => {
-            try {
-              const user = await User.findByPk(userId);
-              if (!user?.fcmToken) {
-                console.log('No FCM token found for user:', userId);
-                return;
-              }
-        
-              const platform = user.devicePlatform || 'ios'; // Default to iOS if not specified
-              console.log('Sending notification to platform:', platform);
-        
-              let message = {
-                token: user.fcmToken,
-                notification: {
-                  title,
-                  body,
-                },
-                data: {
-                  ...data,
-                  click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                },
-              };
-        
-              // Add platform-specific configuration
-              if (platform === 'ios') {
-                message = {
-                  ...message,
-                  apns: {
-                    headers: {
-                      'apns-priority': '10',
-                      'apns-push-type': 'alert'
-                    },
-                    payload: {
-                      aps: {
-                        alert: {
-                          title,
-                          body,
-                        },
-                        sound: 'default',
-                        badge: 1,
-                        'content-available': 1
-                      },
-                      ...data
-                    }
-                  }
-                };
-              } else {
-                message = {
-                  ...message,
-                  android: {
-                    priority: 'high',
-                    notification: {
-                      channelId: 'default',
-                      sound: 'default',
-                      priority: 'high',
-                      defaultVibrateTimings: true
-                    }
-                  }
-                };
-              }
-        
-              const response = await admin.messaging().send(message);
-              console.log(`Successfully sent notification to ${platform}:`, response);
-              return response;
-            } catch (error) {
-              console.error('Error sending notification:', error);
-              throw error;
-            }
-          },
-
-
-  checkFcmToken: async (req, res) => {
+  updateFcmToken: async (req, res) => {
     try {
+      const { fcmToken, platform } = req.body;
       const email = req.user.email;
-      const user = await User.findOne({ 
-        where: { email },
-        attributes: ['id', 'email', 'fcmToken']
-      });
 
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
+      if (!fcmToken) {
+        return res.status(400).json({ error: 'FCM token is required' });
       }
-
-      res.json({
-        email: user.email,
-        fcmToken: user.fcmToken,
-        hasToken: !!user.fcmToken
-      });
-    } catch (error) {
-      console.error('Error checking FCM token:', error);
-      res.status(500).json({ error: 'Failed to check FCM token' });
-    }
-  },
-
-  getUserNotifications: async (req, res) => {
-    try {
-      const email = req.user.email;
 
       const user = await User.findOne({ where: { email } });
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      const userId = user.id;
-      console.log('User ID:', userId);
+      await user.update({ 
+        fcmToken,
+        devicePlatform: platform
+      });
+
+      console.log('🟢 Token updated for user:', {
+        userId: user.id,
+        platform,
+        tokenUpdated: true
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('🔴 Error updating FCM token:', error);
+      res.status(500).json({ error: 'Failed to update FCM token' });
+    }
+  },
+
+  sendPushNotification: async (userId, title, body, data = {}) => {
+    try {
+      const user = await User.findByPk(userId);
+      if (!user?.fcmToken) {
+        console.log('🟡 No FCM token found for user:', userId);
+        return null;
+      }
+
+      const message = {
+        token: user.fcmToken,
+        notification: {
+          title,
+          body,
+        },
+        data: {
+          ...data,
+          timestamp: Date.now().toString(),
+        },
+        android: {
+          priority: 'high',
+          notification: {
+            channelId: 'default',
+            sound: 'default',
+            priority: 'high',
+          },
+        },
+        apns: {
+          payload: {
+            aps: {
+              alert: {
+                title,
+                body,
+              },
+              sound: 'default',
+              badge: 1,
+            },
+          },
+        },
+      };
+
+      const response = await admin.messaging().send(message);
+      console.log('🟢 Push notification sent:', response);
+
+      // Create notification record in database
+      await Notification.create({
+        userId,
+        taskId: data.taskId || null,
+        message: body,
+        type: data.type || 'activity',
+        isRead: false,
+      });
+
+      return response;
+    } catch (error) {
+      console.error('🔴 Error sending push notification:', error);
+      throw error;
+    }
+  },
+
+  createAndSendNotification: async (req, res) => {
+    try {
+      const { userId, title, body, taskId, type } = req.body;
+
+      await notificationController.sendPushNotification(
+        userId,
+        title,
+        body,
+        {
+          taskId,
+          type,
+          screen: 'TaskScreen', // or whatever screen you want to navigate to
+          timestamp: Date.now().toString(),
+        }
+      );
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('🔴 Error creating and sending notification:', error);
+      res.status(500).json({ error: 'Failed to send notification' });
+    }
+  },
+
+  getUserNotifications: async (req, res) => {
+    try {
+      const email = req.user.email;
+      const user = await User.findOne({ where: { email } });
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
 
       const notifications = await Notification.findAll({
         where: {
-          userId: userId,
+          userId: user.id,
           isRead: false,
         },
+        order: [['createdAt', 'DESC']],
       });
 
-      console.log('Notifications found:', notifications);
       res.json({ notifications });
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      console.error('🔴 Error fetching notifications:', error);
       res.status(500).json({ error: 'Server error' });
     }
   },
@@ -170,49 +146,32 @@ const notificationController = {
     try {
       const { taskId, message } = req.body;
       const email = req.user.email;
-
       const user = await User.findOne({ where: { email } });
+      
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      const userId = user.id;
-
-      const notifications = await Notification.findAll({
-        where: {
-          userId: userId,
-          taskId: taskId,
-          message: message,
-          isRead: false,
-        }
-      });
-
-      console.log('Matching Notifications:', notifications);
-
-      if (notifications.length === 0) {
-        return res.json({ message: 'No matching notifications found. Nothing to update.' });
-      }
-
-      const [updatedRowsCount] = await Notification.update(
+      const [updatedCount] = await Notification.update(
         { isRead: true },
         {
           where: {
-            userId: userId,
-            taskId: taskId,
+            userId: user.id,
+            taskId,
+            message,
             isRead: false,
-            message: message
           }
         }
       );
 
-      if (updatedRowsCount > 0) {
-        return res.json({ message: 'Task notifications cleared' });
-      } else {
-        return res.json({ message: 'No unread notifications were updated.' });
-      }
+      res.json({ 
+        success: true, 
+        updatedCount,
+        message: updatedCount > 0 ? 'Notifications cleared' : 'No notifications to clear' 
+      });
     } catch (error) {
-      console.error('Error clearing task notifications:', error);
-      return res.status(500).json({ error: 'Server error' });
+      console.error('🔴 Error clearing notifications:', error);
+      res.status(500).json({ error: 'Server error' });
     }
   }
 };

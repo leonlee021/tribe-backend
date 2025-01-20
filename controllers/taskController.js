@@ -5,6 +5,7 @@ const { Op } = require('sequelize');
 const getAuthenticatedUserId = require('../utils/getAuthenticatedUserId'); 
 const s3 = require('../awsConfig'); // AWS S3 instance
 const { v4: uuidv4 } = require('uuid'); // For unique filenames
+const notificationController = require('./notificationController');
 
 exports.createTask = async (req, res) => {
     try {
@@ -58,6 +59,48 @@ exports.createTask = async (req, res) => {
             photos: photoKeys, // Store the array of photo URLs
             userId,
         });
+
+        if (taskerUsername) {
+            // If a specific tasker is mentioned, notify them
+            const tasker = await User.findOne({ where: { username: taskerUsername } });
+            if (tasker) {
+                await notificationController.sendPushNotification(
+                    tasker.id,
+                    'New Task Assignment',
+                    `${req.user.username} has created a task for you: ${taskName}`,
+                    {
+                        taskId: task.id,
+                        type: 'activity',
+                        screen: 'TaskScreen'
+                    }
+                );
+            }
+        } else {
+            // Optional: Notify all users or users matching certain criteria
+            const potentialTaskers = await User.findAll({
+                where: {
+                    fcmToken: {
+                        [Op.not]: null // Only users with FCM tokens
+                    },
+                    id: {
+                        [Op.not]: userId // Don't notify the task creator
+                    }
+                }
+            });
+
+            for (const user of potentialTaskers) {
+                await notificationController.sendPushNotification(
+                    user.id,
+                    'New Task Available',
+                    `New task posted: ${taskName}`,
+                    {
+                        taskId: task.id,
+                        type: 'activity',
+                        screen: 'TaskScreen'
+                    }
+                );
+            }
+        }
 
         res.status(201).json(task);
     } catch (error) {
