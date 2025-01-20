@@ -173,6 +173,29 @@ const notificationController = {
       console.error('🔴 Error clearing notifications:', error);
       res.status(500).json({ error: 'Server error' });
     }
+  },
+
+  checkFcmToken: async (req, res) => {
+    try {
+      const email = req.user.email;
+      const user = await User.findOne({ 
+        where: { email },
+        attributes: ['id', 'email', 'fcmToken']
+      });
+  
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+  
+      res.json({
+        email: user.email,
+        fcmToken: user.fcmToken,
+        hasToken: !!user.fcmToken
+      });
+    } catch (error) {
+      console.error('🔴 Error checking FCM token:', error);
+      res.status(500).json({ error: 'Failed to check FCM token' });
+    }
   }
 };
 

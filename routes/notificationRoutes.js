@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authenticateToken = require('../middlewares/authenticateToken');
 const notificationController = require('../controllers/notificationController');
+const { User } = require('../models'); 
 
 // FCM token management
 router.post('/update-fcm-token', authenticateToken, notificationController.updateFcmToken);
