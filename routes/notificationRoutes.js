@@ -29,7 +29,7 @@ router.post('/test', authenticateToken, async (req, res) => {
             'Test Notification',
             'This is a test notification',
             {
-                type: 'test',
+                type: 'activity',
                 timestamp: Date.now().toString()
             }
         );
