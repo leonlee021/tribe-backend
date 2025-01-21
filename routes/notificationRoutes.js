@@ -23,16 +23,20 @@ router.post('/test', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        // Send a test notification to yourself
-        const response = await notificationController.sendPushNotification(
-            user.id,
-            'Test Notification',
-            'This is a test notification',
-            {
+        // Send the push notification directly without creating a database record
+        const message = {
+            token: user.fcmToken,
+            notification: {
+                title: 'Test Notification',
+                body: 'This is a test notification'
+            },
+            data: {
                 type: 'activity',
                 timestamp: Date.now().toString()
             }
-        );
+        };
+
+        const response = await admin.messaging().send(message);
 
         res.json({ 
             success: true, 
@@ -41,7 +45,10 @@ router.post('/test', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error sending test notification:', error);
-        res.status(500).json({ error: 'Test failed' });
+        res.status(500).json({ 
+            error: 'Test failed',
+            details: error.message
+        });
     }
 });
 
