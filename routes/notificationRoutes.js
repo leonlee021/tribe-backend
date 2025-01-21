@@ -3,6 +3,7 @@ const router = express.Router();
 const authenticateToken = require('../middlewares/authenticateToken');
 const notificationController = require('../controllers/notificationController');
 const { User } = require('../models'); 
+const { admin } = require('../config/firebaseAdmin');
 
 // FCM token management
 router.post('/update-fcm-token', authenticateToken, notificationController.updateFcmToken);
